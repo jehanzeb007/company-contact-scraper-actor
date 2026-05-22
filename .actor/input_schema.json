@@ -1,0 +1,94 @@
+{
+  "title": "Google Maps Places Scraper — Input",
+  "type": "object",
+  "schemaVersion": 1,
+  "properties": {
+    "url": {
+      "title": "Google Maps Place URL",
+      "type": "string",
+      "description": "Full URL of the Google Maps place. Optional if searchQuery, placeId, or cid is provided.",
+      "editor": "textfield",
+      "pattern": "https?://.*google\\.com/maps/.*",
+      "example": "https://www.google.com/maps/place/Eiffel+Tower/@48.8583701,2.2922926,17z",
+      "nullable": true,
+      "sectionCaption": "Google Maps place URL"
+    },
+    "placeId": {
+      "title": "Google Place ID (Optional)",
+      "type": "string",
+      "description": "Unique Google Place ID of the establishment. Navigates directly and avoids any text-search ambiguity.",
+      "editor": "textfield",
+      "example": "ChIJZQi5xUUPyokRKnfZHK7gBnc",
+      "nullable": true,
+      "sectionCaption": "Google Place ID"
+    },
+    "cid": {
+      "title": "Google Maps CID (Optional)",
+      "type": "string",
+      "description": "Google Maps Customer ID (CID). Navigates directly to the place without search. Accepts a decimal CID string, a maps URL with ?cid= or ludocid=, cid:12345 / ludocid=12345 text, or a place URL containing a hex CID pair (0x...:0x...). Keep large CIDs as strings — do not convert to JSON numbers.",
+      "editor": "textfield",
+      "example": "15430805186958748717",
+      "nullable": true,
+      "sectionCaption": "Google Maps CID"
+    },
+    "searchQuery": {
+      "title": "Search Query (Company Name)",
+      "type": "string",
+      "description": "Company name to search for on Google Maps. Used if URL is not provided.",
+      "editor": "textfield",
+      "default": "Shopify NY",
+      "example": "Eiffel Tower",
+      "nullable": true,
+      "sectionCaption": "Search by company name and website"
+    },
+    "website": {
+      "title": "Company Website (Optional)",
+      "type": "string",
+      "description": "The company's website to match against the search results to guarantee accuracy.",
+      "editor": "textfield",
+      "example": "starbucks.com",
+      "nullable": true
+    },
+    "proxyConfig": {
+      "title": "Proxy Configuration",
+      "type": "object",
+      "description": "Proxy settings. Residential proxies are strongly recommended for cloud runs.",
+      "editor": "proxy",
+      "default": {
+        "useApifyProxy": true,
+        "apifyProxyGroups": ["RESIDENTIAL"]
+      },
+      "sectionCaption": "Scraping options"
+    },
+    "blockAssets": {
+      "title": "Block Images / Fonts",
+      "type": "boolean",
+      "description": "Block image/font/media requests to speed up scraping and reduce bandwidth.",
+      "default": true,
+      "editor": "checkbox"
+    },
+    "apiOnly": {
+      "title": "API Only",
+      "type": "boolean",
+      "description": "Use only the /maps/preview/place API for place details. Disables DOM fallback if the API response cannot be parsed.",
+      "default": false,
+      "editor": "checkbox"
+    },
+    "language": {
+      "title": "Language (Optional)",
+      "type": "string",
+      "description": "Language code for the Google Maps interface (e.g. 'en', 'es', 'fr', 'de'). Defaults to English ('en').",
+      "editor": "textfield",
+      "default": "en",
+      "example": "es",
+      "nullable": true
+    },
+    "headless": {
+      "title": "Headless Browser",
+      "type": "boolean",
+      "description": "Run Puppeteer in headless mode. Set to false locally for debugging.",
+      "default": true,
+      "editor": "checkbox"
+    }
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "name": "apify-google-maps-places-scraper",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Apify Actor — scrapes Google Maps company/place details and review star distribution",
+  "main": "src/main.js",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "start": "node main.js",
+    "dev": "APIFY_IS_AT_HOME=0 node main.js"
+  },
+  "dependencies": {
+    "apify": "^3.7.2",
+    "puppeteer": "22.8.2",
+    "puppeteer-extra": "^3.3.6",
+    "puppeteer-extra-plugin-stealth": "^2.11.2"
+  }
+}

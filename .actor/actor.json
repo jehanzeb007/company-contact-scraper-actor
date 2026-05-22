@@ -1,0 +1,52 @@
+{
+  "actorSpecification": 1,
+  "name": "google-maps-places-details-scraper",
+  "title": "Google Maps Places Details Scraper",
+  "description": "Scrapes Google Maps company/place details (address, phone, website, hours, ratings) and review star distribution. One dataset row per place.",
+  "version": "1.0",
+  "buildTag": "latest",
+  "environmentVariables": {},
+  "dockerfile": "./Dockerfile",
+  "input": "./input_schema.json",
+  "storages": {
+    "dataset": {
+      "actorSpecification": 1,
+      "title": "Google Maps Places Details",
+      "views": {
+        "overview": {
+          "title": "Overview",
+          "transformation": {
+            "fields": [
+              "title",
+              "totalScore",
+              "reviewsCount",
+              "street",
+              "city",
+              "state",
+              "countryCode",
+              "website",
+              "phone",
+              "categoryName",
+              "reviewsDistribution"
+            ]
+          },
+          "display": {
+            "component": "table",
+            "properties": {
+              "title": { "label": "Place name", "format": "text" },
+              "totalScore": { "label": "Rating", "format": "number" },
+              "reviewsCount": { "label": "Reviews", "format": "number" },
+              "street": { "label": "Street", "format": "text" },
+              "city": { "label": "City", "format": "text" },
+              "state": { "label": "State", "format": "text" },
+              "countryCode": { "label": "Country", "format": "text" },
+              "website": { "label": "Website", "format": "link" },
+              "phone": { "label": "Phone", "format": "text" },
+              "categoryName": { "label": "Category", "format": "text" }
+            }
+          }
+        }
+      }
+    }
+  }
+}

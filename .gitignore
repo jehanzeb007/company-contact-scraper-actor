@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+# Apify local storage (generated at runtime, never commit)
+storage/
+# Screenshots captured on error
+screenshots/
+# Environment variables
+.env
+.env.*
+!.env.example
+# OS
+.DS_Store
+Thumbs.db
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+# Logs
+*.log
+npm-debug.log*
+# Temp
+*.tmp
+*.temp
+
+CHANGES.md
