@@ -239,6 +239,84 @@ async function finalizeDiscoveryUrl(page, fallbackUrl) {
   return fallbackUrl;
 }
 
+async function clickBackToSearchResults(page) {
+  return page.evaluate(() => {
+    const click = (el) => {
+      if (!el) return false;
+      el.scrollIntoView({ block: 'center', inline: 'nearest' });
+      el.click();
+      return true;
+    };
+
+    const buttons = [...document.querySelectorAll('button,[role="button"]')];
+    const backButton = buttons.find((button) => {
+      const aria = String(button.getAttribute('aria-label') || '').toLowerCase();
+      const js = String(button.getAttribute('jsaction') || '').toLowerCase();
+      return aria.includes('back') || js.includes('back');
+    });
+
+    return click(backButton);
+  }).catch(() => false);
+}
+
+async function hasSearchResultCards(page) {
+  return page.evaluate(() => {
+    const cards = document.querySelectorAll('a.hfpxzc,div.Nv2PK,div[data-result-index],div[role="article"]');
+    return cards.length > 0;
+  }).catch(() => false);
+}
+
+async function restoreSearchResults(page, searchUrl) {
+  for (let attempt = 1; attempt <= 3; attempt++) {
+    if (await hasSearchResultCards(page)) return true;
+
+    const clickedBack = await clickBackToSearchResults(page);
+    if (clickedBack) {
+      await sleep(900);
+      if (await hasSearchResultCards(page)) return true;
+    }
+
+    await page.goto(searchUrl, { waitUntil: MAPS_GOTO_WAIT, timeout: NAV_TIMEOUT }).catch(() => { });
+    await waitForMapsSearchReady(page);
+    await sleep(500);
+  }
+
+  return hasSearchResultCards(page);
+}
+
+async function collectResultCandidates(page, limit) {
+  return page.evaluate((maxItems) => {
+    const n = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+    const seen = new Set();
+    const candidates = [];
+
+    const push = (href, title) => {
+      if (!href || !href.includes('/maps/place/')) return;
+      const normalized = href.split('&ved=')[0];
+      if (seen.has(normalized)) return;
+      seen.add(normalized);
+      candidates.push({ url: normalized, title: n(title) || null });
+    };
+
+    const cards = [
+      ...document.querySelectorAll('a.hfpxzc,div.Nv2PK,div[data-result-index],div[role="article"]'),
+    ];
+
+    for (const card of cards) {
+      if (candidates.length >= maxItems) break;
+      const link = card.matches('a[href*="/maps/place/"]')
+        ? card
+        : card.querySelector('a.hfpxzc,a[href*="/maps/place/"]');
+      const title = link?.getAttribute('aria-label')
+        || card.querySelector('.qBF1Pd,.fontHeadlineSmall,[role="heading"]')?.textContent
+        || card.textContent;
+      push(link?.href, title);
+    }
+
+    return candidates.slice(0, maxItems);
+  }, limit).catch(() => []);
+}
+
 // ── Extract website link from the currently open Maps place panel ─────────────
 export async function extractWebsiteFromMapsPage(page) {
   try {
@@ -310,11 +388,11 @@ export async function extractCompleteMapUrl(page) {
 
 async function findResultSelector(page) {
   const selectors = [
-    'a[href*="/maps/place/"]',
     'a.hfpxzc',
     'div.Nv2PK',
     'div[data-result-index]',
     'article,div[role="article"]',
+    'a[href*="/maps/place/"]',
   ];
   for (const sel of selectors) {
     const count = await page.$$eval(sel, (els) => els.length).catch(() => 0);
@@ -423,12 +501,15 @@ export async function searchAndClickMapsPreview(page, companyName, targetWebsite
           return await finalizeDiscoveryUrl(page, page.url());
         }
         console.log('  [search] Scenario B: First result mismatch — scanning remaining results');
+        await clickBackToSearchResults(page);
+        await sleep(900);
       } else {
         console.log('  [search] Scenario B: No website found on pre-opened panel');
       }
     }
 
     // ── Scenario C: Results list ─────────────────────────────────────────────
+    await restoreSearchResults(page, searchUrl);
     const { selector: resultSelector, count: resultCount } = await findResultSelector(page);
     if (!resultSelector || resultCount === 0) {
       const state = await getMapsPageState(page);
@@ -439,18 +520,18 @@ export async function searchAndClickMapsPreview(page, companyName, targetWebsite
     console.log(`  [search] Found ${resultCount} result items (selector: ${resultSelector})`);
 
     const maxScan = targetDomain ? MAX_RESULTS_WITH_WEBSITE : MAX_RESULTS_NO_WEBSITE;
-    const resultLinks = await page.$$(resultSelector);
-    const scanCount = Math.min(resultLinks.length, maxScan);
+    const candidates = await collectResultCandidates(page, maxScan);
+    const scanCount = candidates.length;
     console.log(`  [search] Scenario C: Scanning up to ${scanCount} results`);
     const matchingCandidates = [];
 
     for (let i = 0; i < scanCount; i++) {
       try {
-        const links = await page.$$(resultSelector);
-        if (i >= links.length) break;
+        const candidateUrl = candidates[i]?.url;
+        if (!candidateUrl) continue;
 
-        console.log(`  [search] Checking result ${i + 1}/${scanCount}`);
-        await links[i].click();
+        console.log(`  [search] Checking result ${i + 1}/${scanCount}${candidates[i]?.title ? `: "${candidates[i].title}"` : ''}`);
+        await page.goto(candidateUrl, { waitUntil: MAPS_GOTO_WAIT, timeout: NAV_TIMEOUT });
         await waitForPlacePanelReady(page);
         await sleep(STABILIZE_MS);
 
