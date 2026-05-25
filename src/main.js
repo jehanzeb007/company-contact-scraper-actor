@@ -2,19 +2,10 @@ import { Actor } from 'apify';
 import puppeteer from 'puppeteer-extra';
 import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { scrapeGoogleMapsPlace } from './scraper.js';
-import { buildGoogleMapsCidUrl, searchAndClickMapsPreview, extractCompleteMapUrl } from './discovery.js';
 import { buildPuppeteerLaunchOptions } from './browser.js';
+import { selectTargetResolutionStrategy } from './strategies/targetResolution.js';
 
 puppeteer.use(StealthPlugin());
-
-/** Reflects how the place was resolved — url/cid/placeId beat searchQuery. */
-function buildRunSearchString({ url, cid, placeId, searchQuery, targetUrl }) {
-  if (url) return url;
-  if (cid) return String(cid);
-  if (placeId) return placeId;
-  if (searchQuery) return searchQuery;
-  return targetUrl || null;
-}
 
 await Actor.init();
 console.log('[browser] Chrome resolver v2 (Apify system Chrome + cache fallback)');
@@ -29,6 +20,7 @@ const CLI_STRING_KEYS = new Set([
   'placeId',
   'cid',
   'language',
+  'strategy',
 ]);
 
 function parseCliValue(key, valueStr) {
@@ -107,16 +99,6 @@ const browser = await puppeteer.launch(launchOptions);
 let targetUrl = url;
 let placeOutput = null;
 
-if (!targetUrl && cid) {
-  targetUrl = buildGoogleMapsCidUrl(cid);
-  console.log(`[cid] Constructed direct CID URL: ${targetUrl}`);
-}
-
-if (!targetUrl && placeId) {
-  targetUrl = `https://www.google.com/maps/search/?api=1&query=Place&query_place_id=${placeId}`;
-  console.log(`[placeId] Constructed direct Place ID URL: ${targetUrl}`);
-}
-
 try {
   const page = await browser.newPage();
 
@@ -149,42 +131,29 @@ try {
     });
   }
 
-  // ── Discovery ───────────────────────────────────────────────────────────────
-  if (!targetUrl && (placeId || cid)) {
-    // URLs built above
-  } else if (!targetUrl && searchQuery) {
-    console.log(`\n[discovery] Initiating discovery for: "${searchQuery}"`);
-    const discoveredUrl = await searchAndClickMapsPreview(page, searchQuery, website);
-    if (!discoveredUrl) {
-      throw new Error(`Failed to discover place "${searchQuery}"${website ? ` matching website "${website}"` : ''} on Google Maps.`);
-    }
-    const needsPlaceUrl = !discoveredUrl.includes('/place/') && !discoveredUrl.includes('cid=');
-    const finalUrl = needsPlaceUrl ? await extractCompleteMapUrl(page) : discoveredUrl;
-    targetUrl = finalUrl || discoveredUrl;
-    console.log(`[discovery] Locked onto Maps URL: ${targetUrl}\n`);
-  }
-
-  const runSearchString = buildRunSearchString({ url, cid, placeId, searchQuery, targetUrl });
-  const usedDiscovery = !url && !cid && !placeId && Boolean(searchQuery);
-  const effectiveSearchQuery = usedDiscovery ? searchQuery : null;
+  // ── Target resolution strategy ──────────────────────────────────────────────
+  const resolutionStrategy = selectTargetResolutionStrategy(input);
+  console.log(`[strategy] Resolving target with "${resolutionStrategy.name}" strategy.`);
+  const resolvedTarget = await resolutionStrategy.resolve({ page, input, language });
+  targetUrl = resolvedTarget.targetUrl;
 
   // ── Scrape company / place details ──────────────────────────────────────────
   placeOutput = await scrapeGoogleMapsPlace(page, {
     url: targetUrl,
     language,
     placeId: placeId || null,
-    searchString: runSearchString,
-    searchQuery: effectiveSearchQuery,
+    searchString: resolvedTarget.searchString,
+    searchQuery: resolvedTarget.searchQuery,
     apiOnly,
-    skipWarmUp: usedDiscovery,
+    skipWarmUp: resolvedTarget.skipWarmUp,
   });
 
-  if (usedDiscovery && effectiveSearchQuery && placeOutput?.title) {
-    const q = effectiveSearchQuery.toLowerCase();
+  if (resolvedTarget.skipWarmUp && resolvedTarget.searchQuery && placeOutput?.title) {
+    const q = resolvedTarget.searchQuery.toLowerCase();
     const t = String(placeOutput.title).toLowerCase();
     const lead = q.split(/\s+/).find((w) => w.length > 3);
     if (lead && !t.includes(lead)) {
-      console.warn(`[validate] Scraped "${placeOutput.title}" may not match searchQuery "${effectiveSearchQuery}"`);
+      console.warn(`[validate] Scraped "${placeOutput.title}" may not match searchQuery "${resolvedTarget.searchQuery}"`);
     }
   }
 

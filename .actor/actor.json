@@ -1,48 +1,63 @@
 {
   "actorSpecification": 1,
-  "name": "google-maps-places-details-scraper",
-  "title": "Google Maps Places Details Scraper",
-  "description": "Scrapes Google Maps company/place details (address, phone, website, hours, ratings) and review star distribution. One dataset row per place.",
+  "name": "company-contact-scraper",
+  "title": "Company Contact Scraper",
+  "description": "Scrapes company contact details from Google Maps, including phone, website, address, location metadata, opening hours, ratings, and review distribution. One dataset row is produced per company/place.",
   "version": "1.0",
   "buildTag": "latest",
+  "minMemoryMbytes": 2048,
+  "defaultMemoryMbytes": 4096,
+  "maxMemoryMbytes": 8192,
   "environmentVariables": {},
-  "dockerfile": "./Dockerfile",
   "input": "./input_schema.json",
   "storages": {
     "dataset": {
       "actorSpecification": 1,
-      "title": "Google Maps Places Details",
+      "title": "Company Contacts",
       "views": {
         "overview": {
           "title": "Overview",
           "transformation": {
             "fields": [
+              "searchString",
               "title",
-              "totalScore",
-              "reviewsCount",
-              "street",
+              "categoryName",
+              "website",
+              "phone",
+              "phoneUnformatted",
+              "address",
               "city",
               "state",
               "countryCode",
-              "website",
-              "phone",
-              "categoryName",
-              "reviewsDistribution"
+              "totalScore",
+              "reviewsCount",
+              "reviewsDistribution",
+              "placeId",
+              "cid",
+              "url",
+              "scrapedAt"
             ]
           },
           "display": {
             "component": "table",
             "properties": {
+              "searchString": { "label": "Search input", "format": "text" },
               "title": { "label": "Place name", "format": "text" },
-              "totalScore": { "label": "Rating", "format": "number" },
-              "reviewsCount": { "label": "Reviews", "format": "number" },
-              "street": { "label": "Street", "format": "text" },
+              "categoryName": { "label": "Category", "format": "text" },
+              "website": { "label": "Website", "format": "link" },
+              "phone": { "label": "Phone", "format": "text" },
+              "phoneUnformatted": { "label": "Phone normalized", "format": "text" },
+              "address": { "label": "Address", "format": "text" },
               "city": { "label": "City", "format": "text" },
               "state": { "label": "State", "format": "text" },
               "countryCode": { "label": "Country", "format": "text" },
-              "website": { "label": "Website", "format": "link" },
-              "phone": { "label": "Phone", "format": "text" },
-              "categoryName": { "label": "Category", "format": "text" }
+              "totalScore": { "label": "Rating", "format": "number" },
+              "reviewsCount": { "label": "Reviews", "format": "number" },
+              "reviewsDistribution": { "label": "Review stars", "format": "object" },
+              "placeId": { "label": "Place ID", "format": "text" },
+              "cid": { "label": "CID", "format": "text" },
+              "url": { "label": "Google Maps URL", "format": "link" },
+              "scrapedAt": { "label": "Scraped at", "format": "date" }
             }
           }
         }

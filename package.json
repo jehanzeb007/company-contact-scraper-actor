@@ -1,8 +1,8 @@
 {
-  "name": "apify-google-maps-places-scraper",
+  "name": "company-contact-scraper-actor",
   "version": "1.0.0",
   "type": "module",
-  "description": "Apify Actor — scrapes Google Maps company/place details and review star distribution",
+  "description": "Apify Actor for scraping company contact details from Google Maps",
   "main": "src/main.js",
   "engines": {
     "node": ">=20"

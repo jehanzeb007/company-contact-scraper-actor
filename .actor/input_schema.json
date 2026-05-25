@@ -1,8 +1,20 @@
 {
-  "title": "Google Maps Places Scraper — Input",
+  "title": "Company Contact Scraper Input",
+  "description": "Provide a Google Maps place URL, CID, Place ID, or company search query. The actor resolves the company profile and extracts contact details into the default dataset.",
   "type": "object",
   "schemaVersion": 1,
+  "additionalProperties": false,
   "properties": {
+    "strategy": {
+      "title": "Resolution Strategy",
+      "type": "string",
+      "description": "Controls how the actor resolves the target company. Auto uses this priority: URL, CID, Place ID, then search query.",
+      "editor": "select",
+      "default": "auto",
+      "enum": ["auto", "url", "cid", "placeId", "search"],
+      "enumTitles": ["Auto", "Google Maps URL", "Google Maps CID", "Google Place ID", "Search query"],
+      "sectionCaption": "Target company"
+    },
     "url": {
       "title": "Google Maps Place URL",
       "type": "string",
@@ -10,8 +22,7 @@
       "editor": "textfield",
       "pattern": "https?://.*google\\.com/maps/.*",
       "example": "https://www.google.com/maps/place/Eiffel+Tower/@48.8583701,2.2922926,17z",
-      "nullable": true,
-      "sectionCaption": "Google Maps place URL"
+      "nullable": true
     },
     "placeId": {
       "title": "Google Place ID (Optional)",
@@ -19,8 +30,7 @@
       "description": "Unique Google Place ID of the establishment. Navigates directly and avoids any text-search ambiguity.",
       "editor": "textfield",
       "example": "ChIJZQi5xUUPyokRKnfZHK7gBnc",
-      "nullable": true,
-      "sectionCaption": "Google Place ID"
+      "nullable": true
     },
     "cid": {
       "title": "Google Maps CID (Optional)",
@@ -28,15 +38,14 @@
       "description": "Google Maps Customer ID (CID). Navigates directly to the place without search. Accepts a decimal CID string, a maps URL with ?cid= or ludocid=, cid:12345 / ludocid=12345 text, or a place URL containing a hex CID pair (0x...:0x...). Keep large CIDs as strings — do not convert to JSON numbers.",
       "editor": "textfield",
       "example": "15430805186958748717",
-      "nullable": true,
-      "sectionCaption": "Google Maps CID"
+      "nullable": true
     },
     "searchQuery": {
       "title": "Search Query (Company Name)",
       "type": "string",
       "description": "Company name to search for on Google Maps. Used if URL is not provided.",
       "editor": "textfield",
-      "default": "Shopify NY",
+      "prefill": "Shopify NY",
       "example": "Eiffel Tower",
       "nullable": true,
       "sectionCaption": "Search by company name and website"
@@ -90,5 +99,6 @@
       "default": true,
       "editor": "checkbox"
     }
-  }
+  },
+  "required": []
 }
