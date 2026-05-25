@@ -77,8 +77,21 @@ const launchArgs = [
   '--no-sandbox',
   '--disable-setuid-sandbox',
   '--disable-dev-shm-usage',
+  '--disable-accelerated-2d-canvas',
+  '--disable-background-networking',
   '--lang=en-US,en',
+  '--disable-default-apps',
+  '--disable-extensions',
+  '--disable-gpu',
+  '--disable-sync',
   '--disable-blink-features=AutomationControlled',
+  '--metrics-recording-only',
+  '--mute-audio',
+  '--no-first-run',
+  '--no-zygote',
+  '--password-store=basic',
+  '--remote-debugging-port=0',
+  '--use-mock-keychain',
 ];
 if (proxyUrl) {
   const parsed = new URL(proxyUrl);
@@ -92,9 +105,17 @@ const launchOptions = buildPuppeteerLaunchOptions({
   args: launchArgs,
   defaultViewport: { width: 1280, height: 900 },
 });
+launchOptions.timeout = 60_000;
+launchOptions.dumpio = process.env.DEBUG_BROWSER === '1';
 console.log(`[browser] Launching Chrome: ${launchOptions.executablePath}`);
 
-const browser = await puppeteer.launch(launchOptions);
+const browser = await Promise.race([
+  puppeteer.launch(launchOptions),
+  new Promise((_, reject) => {
+    const timer = setTimeout(() => reject(new Error('Chrome launch timed out after 60 seconds. Rebuild on a matching Apify Puppeteer Chrome image or enable DEBUG_BROWSER=1 for Chrome stderr.')), 60_000);
+    timer.unref?.();
+  }),
+]);
 
 let targetUrl = url;
 let placeOutput = null;

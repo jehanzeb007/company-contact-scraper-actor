@@ -1,5 +1,5 @@
-# Node 20 + Puppeteer 22.15.0 + matching system Chrome (see package.json)
-FROM apify/actor-node-puppeteer-chrome:20-22.15.0
+# Node 20 + Chrome for Puppeteer actors.
+FROM apify/actor-node-puppeteer-chrome:20
 
 # Base image ships Chrome; npm must not download another browser during ci
 ENV PUPPETEER_SKIP_DOWNLOAD=true \
