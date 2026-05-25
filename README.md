@@ -269,31 +269,3 @@ If Chrome startup fails in Apify Cloud, set the environment variable below and r
 ```text
 DEBUG_BROWSER=1
 ```
-
-## Project Structure
-
-```text
-main.js                         # Root entrypoint, imports src/main.js
-Dockerfile                      # Apify Docker image definition
-package.json
-.actor/
-  actor.json                    # Apify actor metadata and dataset view
-  input_schema.json             # Apify input schema
-src/
-  main.js                       # Actor init, proxy/browser setup, dataset push
-  strategies/
-    targetResolution.js         # Strategy pattern for url/cid/placeId/search
-  discovery.js                  # Google Maps search and website matching
-  scraper.js                    # Scrape orchestration and output formatter
-  placeApi.js                   # preview/place API parsing
-  placePanels.js                # photos, about, and web results enrichment
-  browser.js                    # Chrome executable resolution and launch options
-```
-
-## Client Documentation
-
-A DOCX version of the client-facing input/output documentation is included:
-
-```text
-Company_Contact_Scraper_Client_Documentation.docx
-```
