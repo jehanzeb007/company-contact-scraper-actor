@@ -13,8 +13,11 @@
   },
   "dependencies": {
     "apify": "^3.7.2",
-    "puppeteer": "22.8.2",
+    "puppeteer": "22.15.0",
     "puppeteer-extra": "^3.3.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2"
+  },
+  "overrides": {
+    "file-type": ">=21.3.2"
   }
 }
