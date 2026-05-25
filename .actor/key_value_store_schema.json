@@ -1,0 +1,32 @@
+{
+  "actorKeyValueStoreSchemaVersion": 1,
+  "title": "Company Contact Scraper Key-Value Store",
+  "description": "Metadata records written by the Actor.",
+  "collections": {
+    "metadata": {
+      "title": "Output metadata",
+      "description": "Run metadata for the resolved company/place.",
+      "key": "OUTPUT_METADATA",
+      "contentTypes": ["application/json"],
+      "jsonSchema": {
+        "type": "object",
+        "properties": {
+          "place": {
+            "type": ["object", "null"],
+            "description": "The final company/place output item pushed to the dataset."
+          },
+          "sourceUrl": {
+            "type": ["string", "null"],
+            "description": "The resolved Google Maps URL or target URL used for scraping."
+          },
+          "scrapedAt": {
+            "type": "string",
+            "description": "ISO timestamp when metadata was written."
+          }
+        },
+        "required": ["place", "sourceUrl", "scrapedAt"],
+        "additionalProperties": true
+      }
+    }
+  }
+}

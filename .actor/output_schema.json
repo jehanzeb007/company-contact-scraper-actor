@@ -1,0 +1,19 @@
+{
+  "actorOutputSchemaVersion": 1,
+  "title": "Company Contact Scraper Output",
+  "description": "Links to the company contact result dataset and run metadata produced by the Actor.",
+  "properties": {
+    "results": {
+      "type": "string",
+      "title": "Company contact results",
+      "description": "Default dataset items. Each run produces one company/place contact record.",
+      "template": "{{links.apiDefaultDatasetUrl}}/items?view=overview"
+    },
+    "metadata": {
+      "type": "string",
+      "title": "Output metadata",
+      "description": "Run metadata containing the resolved place output, source URL, and scrape timestamp.",
+      "template": "{{links.apiDefaultKeyValueStoreUrl}}/records/OUTPUT_METADATA"
+    }
+  }
+}

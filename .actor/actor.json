@@ -10,6 +10,7 @@
   "maxMemoryMbytes": 8192,
   "environmentVariables": {},
   "input": "./input_schema.json",
+  "output": "./output_schema.json",
   "storages": {
     "dataset": {
       "actorSpecification": 1,
@@ -62,6 +63,7 @@
           }
         }
       }
-    }
+    },
+    "keyValueStore": "./key_value_store_schema.json"
   }
 }
