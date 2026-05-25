@@ -12,9 +12,14 @@
     "dev": "APIFY_IS_AT_HOME=0 node main.js"
   },
   "dependencies": {
-    "apify": "^3.7.2",
-    "puppeteer": "22.8.2",
+    "@crawlee/core": "^3.16.0",
+    "@crawlee/utils": "^3.16.0",
+    "apify": "^3.4.4",
+    "puppeteer": "^24.15.0",
     "puppeteer-extra": "^3.3.6",
     "puppeteer-extra-plugin-stealth": "^2.11.2"
+  },
+  "overrides": {
+    "file-type": "^21.0.0"
   }
 }
