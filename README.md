@@ -1,271 +1,149 @@
-# Company Contact Scraper - Apify Actor
+# 🗺️ Company Contact Scraper
 
-Scrapes one company/place profile from Google Maps and outputs one dataset item with contact details, address data, ratings, review star distribution, photos, web results, and Google Maps identifiers.
+Scrape any business profile from Google Maps — get contact details, address, ratings, photos, and more in one click.
 
-## What It Extracts
+---
 
-- Company/place name
-- Category and category list
-- Website and phone number
-- Full address plus parsed street, city, state, postal code, and country
-- Latitude/longitude
-- Google Maps URL, CID, feature ID, KG/MID, and optional Place ID
-- Rating, review count, and star distribution histogram
-- Opening hours
-- Photos and image URLs
-- Web results shown in the Google Maps panel
-- About/attribute data when available
+## ✅ What You Get
 
-The actor does not return individual review text. It returns only the aggregate star distribution.
+| Data | Details |
+|------|---------|
+| 📛 Name & Category | Business name, primary and full category list |
+| 📞 Contact | Phone number (formatted + raw), website URL |
+| 📍 Address | Full address + parsed street, city, state, ZIP, country |
+| ⭐ Ratings | Average score, total reviews, star-by-star breakdown |
+| 🕐 Hours | Opening hours for each day |
+| 📸 Photos | Image URLs with author and upload date |
+| 🌐 Web Results | Related web links shown in the Maps panel |
+| 🔑 IDs | CID, Feature ID, Place ID, Knowledge Graph ID |
 
-## How It Works
+> **Note:** Individual review text is **not** collected — only the star distribution summary.
 
-1. Resolves the target company using a strategy: `url`, `cid`, `placeId`, or `search`.
-2. For search runs, optionally verifies the matched result by website domain.
-3. Opens the Google Maps profile in Puppeteer.
-4. Uses Google Maps `preview/place` data when available.
-5. Enriches missing contact, rating, review distribution, photos, web results, and about fields from the live Maps page when `apiOnly` is `false`.
-6. Pushes one item to the default Apify dataset.
-7. Writes `OUTPUT_METADATA` to the default key-value store.
+---
 
-## Input
+## 🚀 Quick Start
 
-At least one of `url`, `cid`, `placeId`, or `searchQuery` is required.
+You need **at least one** of these to run the actor:
 
-If `strategy` is `auto` and multiple target fields are provided, the priority is:
+- A Google Maps URL
+- A business name (search query)
+- A Google Maps CID
+- A Google Place ID
 
-1. `url`
-2. `cid`
-3. `placeId`
-4. `searchQuery`
+---
 
-| Field | Type | Required | Default | Description |
-|---|---|---:|---|---|
-| `strategy` | string | No | `auto` | Target resolution method. Allowed values: `auto`, `url`, `cid`, `placeId`, `search`. |
-| `url` | string | Conditional | `null` | Full Google Maps place URL. |
-| `cid` | string | Conditional | `null` | Google Maps CID. Accepts decimal CID, Maps URL with `cid`/`ludocid`, `cid:123`, `ludocid=123`, or a URL with a hex CID pair. Keep large CIDs as strings. |
-| `placeId` | string | Conditional | `null` | Google Place ID. |
-| `searchQuery` | string | Conditional | `null` | Company name to search on Google Maps. |
-| `website` | string | No | `null` | Company website used to verify the correct search result. Strongly recommended with `searchQuery`. |
-| `proxyConfig` | object | No | Apify residential proxy | Apify proxy configuration. Residential proxies are recommended for cloud runs. |
-| `blockAssets` | boolean | No | `true` | Blocks image/font/media requests during the main scrape to reduce bandwidth. |
-| `apiOnly` | boolean | No | `false` | Uses only the Maps preview API and disables DOM fallback/enrichment. Leave `false` for best completeness. |
-| `language` | string | No | `en` | Google Maps UI language code, for example `en`, `es`, `fr`, `de`. |
-| `headless` | boolean | No | `true` | Puppeteer headless mode. Keep `true` on Apify Cloud. |
+## ⚙️ Input Options
 
-## Input Examples
-
-### Search by Company Name and Website
+### 🔍 Option 1 — Search by Business Name *(most common)*
 
 ```json
 {
   "strategy": "search",
-  "searchQuery": "VAS Global | Virtual Assistant Services for Businesses",
-  "website": "https://virtualassistantsolutions.com/",
-  "language": "en",
-  "blockAssets": true,
-  "apiOnly": false,
-  "proxyConfig": {
-    "useApifyProxy": true,
-    "apifyProxyGroups": ["RESIDENTIAL"]
-  }
+  "searchQuery": "Blue Bottle Coffee San Francisco",
+  "website": "https://bluebottlecoffee.com/",
+  "language": "en"
 }
 ```
 
-### Direct Google Maps URL
+> 💡 **Tip:** Always add `website` when searching by name — it helps match the correct listing.
+
+---
+
+### 🔗 Option 2 — Google Maps URL
+
+Paste the URL directly from your browser:
 
 ```json
 {
   "strategy": "url",
-  "url": "https://www.google.com/maps/place/Eiffel+Tower/@48.8583701,2.2922926,17z",
-  "language": "en",
-  "proxyConfig": {
-    "useApifyProxy": true,
-    "apifyProxyGroups": ["RESIDENTIAL"]
-  }
+  "url": "https://www.google.com/maps/place/Eiffel+Tower/@48.8583701,2.2922926,17z"
 }
 ```
 
-### Google Maps CID
+---
+
+### 🆔 Option 3 — CID or Place ID
 
 ```json
 {
   "strategy": "cid",
-  "cid": "15430805186958748717",
-  "language": "en"
+  "cid": "15430805186958748717"
 }
 ```
-
-### Google Place ID
 
 ```json
 {
   "strategy": "placeId",
-  "placeId": "ChIJZQi5xUUPyokRKnfZHK7gBnc",
-  "language": "en"
+  "placeId": "ChIJZQi5xUUPyokRKnfZHK7gBnc"
 }
 ```
 
-## Output
+---
 
-The actor writes one object to the default dataset. Some fields can be `null` or empty arrays if Google Maps does not expose the data.
+## 🛠️ All Input Fields
 
-### Main Output Fields
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `strategy` | string | `auto` | How to find the place: `auto`, `url`, `cid`, `placeId`, or `search` |
+| `url` | string | — | Google Maps place URL |
+| `cid` | string | — | Google Maps CID |
+| `placeId` | string | — | Google Place ID |
+| `searchQuery` | string | — | Business name to search |
+| `website` | string | — | Company website — helps verify the right result when searching |
+| `language` | string | `en` | Maps UI language (e.g. `en`, `es`, `fr`, `de`) |
+| `apiOnly` | boolean | `false` | Use Maps API only — leave `false` for the most complete data |
+| `blockAssets` | boolean | `true` | Block images/fonts during scrape to save bandwidth |
+| `proxyConfig` | object | Residential | Apify proxy config — residential proxies recommended |
 
-| Field | Type | Description |
-|---|---|---|
-| `searchString` | string or null | Original search/target value used for the run. |
-| `title` | string or null | Company/place name. |
-| `description` | string or null | Business description when available. |
-| `categoryName` | string or null | Primary Google Maps category. |
-| `categories` | array | Category list. |
-| `address` | string or null | Full address. |
-| `street` | string or null | Parsed street address. |
-| `city` | string or null | Parsed city. |
-| `postalCode` | string or null | Parsed postal/ZIP code. |
-| `state` | string or null | Parsed state/province/region. |
-| `countryCode` | string or null | Parsed country/country label. |
-| `website` | string or null | Company website URL. |
-| `phone` | string or null | Phone number as displayed by Google Maps. |
-| `phoneUnformatted` | string or null | Normalized phone number when possible. |
-| `totalScore` | number or null | Average rating. |
-| `reviewsCount` | number or null | Total reviews count. |
-| `reviewsDistribution` | object | Review histogram by star rating. |
-| `openingHours` | array | Opening hours by day. |
-| `location` | object or null | Latitude and longitude. |
-| `url` | string or null | Final Google Maps URL. |
-| `placeId` | string or null | Google Place ID when provided. |
-| `cid` | string or null | Google Maps CID. |
-| `fid` | string or null | Google Maps feature ID. |
-| `kgmid` | string or null | Google Knowledge Graph / Maps ID when available. |
-| `plusCode` | string or null | Google Plus Code when available. |
-| `imageUrl` | string or null | Primary image URL. |
-| `imageUrls` | array | Collected image URLs. |
-| `imagesCount` | number | Number of collected image URLs. |
-| `images` | array | Image objects with `imageUrl`, `authorName`, `authorUrl`, and `uploadedAt`. |
-| `videoUrls` | array | Collected video URLs when available. |
-| `webResults` | array | Related web results shown in Google Maps. |
-| `additionalInfo` | object | About/attribute sections such as accessibility, amenities, planning, and payments. |
-| `placesTags` | array | Flattened tags/attributes from Google Maps. |
-| `permanentlyClosed` | boolean | Whether Google Maps marks the place permanently closed. |
-| `temporarilyClosed` | boolean | Whether Google Maps marks the place temporarily closed. |
-| `scrapedAt` | string | ISO timestamp when the item was scraped. |
+---
 
-### Example Output
+## 📦 Output Example
 
 ```json
 {
-  "searchString": "VAS Global | Virtual Assistant Services for Businesses",
-  "title": "VAS Global | Virtual Assistant Services for Businesses",
-  "description": null,
-  "categoryName": "Business management consultant",
-  "address": "123 Example Street, Miami, FL 33101, United States",
-  "street": "123 Example Street",
-  "city": "Miami",
-  "postalCode": "33101",
-  "state": "Florida",
+  "title": "Blue Bottle Coffee",
+  "categoryName": "Coffee shop",
+  "phone": "+1 510-653-3394",
+  "website": "https://bluebottlecoffee.com/",
+  "address": "300 Webster St, Oakland, CA 94607, United States",
+  "city": "Oakland",
+  "state": "California",
   "countryCode": "United States",
-  "website": "https://virtualassistantsolutions.com/",
-  "phone": "+1 850-861-6367",
-  "phoneUnformatted": "+18508616367",
-  "totalScore": 2.4,
-  "reviewsCount": 21,
+  "totalScore": 4.5,
+  "reviewsCount": 812,
   "reviewsDistribution": {
-    "oneStar": 6,
-    "twoStar": 7,
-    "threeStar": 4,
-    "fourStar": 1,
-    "fiveStar": 3
+    "oneStar": 20,
+    "twoStar": 15,
+    "threeStar": 60,
+    "fourStar": 180,
+    "fiveStar": 537
   },
   "openingHours": [
-    {
-      "day": "Monday",
-      "hours": "9 AM-5 PM"
-    }
+    { "day": "Monday", "hours": "8 AM–6 PM" }
   ],
-  "location": {
-    "lat": 25.6554871,
-    "lng": -80.4031784
-  },
-  "url": "https://www.google.com/maps/place/...",
-  "placeId": null,
-  "cid": "10346650057377339081",
-  "fid": "0x88d9c189a9fea2df:0x8f919ce21903b6c9",
-  "kgmid": "/g/11wbwhnbf9",
+  "location": { "lat": 37.8044, "lng": -122.2712 },
   "imageUrl": "https://lh5.googleusercontent.com/...",
-  "imageUrls": [
-    "https://lh5.googleusercontent.com/..."
-  ],
-  "imagesCount": 1,
-  "images": [
-    {
-      "imageUrl": "https://lh5.googleusercontent.com/...",
-      "authorName": null,
-      "authorUrl": null,
-      "uploadedAt": null
-    }
-  ],
-  "videoUrls": [],
-  "webResults": [
-    {
-      "title": "VAS Global",
-      "url": "https://virtualassistantsolutions.com/",
-      "displayedUrl": "virtualassistantsolutions.com",
-      "description": "Related website result text when available"
-    }
-  ],
-  "additionalInfo": {},
-  "placesTags": [],
   "permanentlyClosed": false,
-  "temporarilyClosed": false,
   "scrapedAt": "2026-05-25T08:40:00.000Z"
 }
 ```
 
-## Local Development
+One object per run is saved to the **Apify dataset**.
 
-Install dependencies:
+---
 
-```bash
-npm install
-```
+## ❓ FAQ
 
-Run with CLI arguments:
+**Why is some data missing or null?**
+Google Maps doesn't always show every field. Fields the actor can't find are returned as `null` or empty arrays.
 
-```bash
-node src/main.js --searchQuery="VAS Global | Virtual Assistant Services for Businesses" --website="https://virtualassistantsolutions.com/"
-```
+**Should I include `website` with my search query?**
+Yes — it greatly improves accuracy by confirming the right business was found.
 
-Run through Apify CLI:
+**What proxy should I use?**
+Residential proxies (the default) are recommended for reliable results on Apify Cloud.
 
-```bash
-apify run
-```
+**My run failed with a Chrome error. What do I do?**
+Set the environment variable `DEBUG_BROWSER=1` and re-run to see detailed browser logs.
 
-Validate Apify schemas:
-
-```bash
-apify validate-schema
-```
-
-## Apify Deployment
-
-The Dockerfile is stored at the project root:
-
-```text
-Dockerfile
-```
-
-Apify auto-detects it because `.actor/Dockerfile` is not present.
-
-Deploy/rebuild on Apify:
-
-```bash
-apify push
-```
-
-If Chrome startup fails in Apify Cloud, set the environment variable below and rerun to print Chrome stderr:
-
-```text
-DEBUG_BROWSER=1
-```
+---
