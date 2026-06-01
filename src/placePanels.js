@@ -1,5 +1,12 @@
+import { ABOUT_SECTION_HINTS } from './aboutInfo.js';
+import {
+  mergeAdditionalInfo,
+  norm,
+  normalizeAdditionalInfo,
+  sanitizePlaceDescription,
+} from './textHeuristics.js';
+
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim();
 
 async function evaluateWithTimeout(page, pageFunction, arg, timeoutMs = 8000) {
   const task = arg === undefined
@@ -238,9 +245,10 @@ export async function extractPhotosFromOverview(page) {
   return { imageUrls, videoUrls };
 }
 
-export async function extractPhotosAndVideos(page, { maxScrolls = 15 } = {}) {
+export async function extractPhotosAndVideos(page, { maxScrolls = 15, maxPhotos = null } = {}) {
   const photoSet = new Set();
   const videoSet = new Set();
+  const photoLimit = maxPhotos != null ? Math.max(1, Number(maxPhotos) || 10) : null;
 
   const fromState = await extractPhotosFromAppState(page);
   for (const u of fromState) photoSet.add(u);
@@ -252,7 +260,7 @@ export async function extractPhotosAndVideos(page, { maxScrolls = 15 } = {}) {
   const opened = await openPhotosPanel(page);
   if (!opened) {
     console.log('[panels] Photos & videos panel not opened — using overview/state URLs only.');
-  } else {
+  } else if (!photoLimit || photoSet.size < photoLimit) {
     for (let i = 0; i < maxScrolls; i++) {
       const batch = await page.evaluate(collectMediaUrlsFromDom).catch(() => ({ photoUrls: [], videoUrls: [] }));
       for (const u of batch.photoUrls || []) {
@@ -264,6 +272,8 @@ export async function extractPhotosAndVideos(page, { maxScrolls = 15 } = {}) {
         if (n && isVideoMediaUrl(n)) videoSet.add(n);
       }
 
+      if (photoLimit && photoSet.size >= photoLimit) break;
+
       const scrolled = await scrollGallery(page);
       if (!scrolled) break;
       await sleep(500);
@@ -273,7 +283,8 @@ export async function extractPhotosAndVideos(page, { maxScrolls = 15 } = {}) {
     for (const u of afterTab) photoSet.add(u);
   }
 
-  const imageUrls = filterGalleryImageUrls([...photoSet]);
+  let imageUrls = filterGalleryImageUrls([...photoSet]);
+  if (photoLimit) imageUrls = imageUrls.slice(0, photoLimit);
   const videoUrls = [...new Set([...videoSet].map((u) => normalizeMediaUrl(u)).filter(Boolean))];
   const images = imageUrls.map((imageUrl) => ({
     imageUrl,
@@ -284,6 +295,42 @@ export async function extractPhotosAndVideos(page, { maxScrolls = 15 } = {}) {
 
   console.log(`[panels] Collected ${imageUrls.length} photo URL(s), ${videoUrls.length} video URL(s).`);
   return { imageUrls, videoUrls, images };
+}
+
+export function galleryScrollsForImageLimit(maxImages) {
+  const n = Math.max(1, Number(maxImages) || 10);
+  return Math.min(15, Math.max(2, Math.ceil(n / 4)));
+}
+
+export function clearPlaceImages(place) {
+  if (!place) return place;
+  place.imageUrl = null;
+  place.imageUrls = [];
+  place.images = [];
+  place.videoUrls = [];
+  return place;
+}
+
+export function capPlaceImages(place, maxImages = 10) {
+  if (!place) return place;
+  const merged = filterGalleryImageUrls([
+    place?.imageUrl,
+    ...(Array.isArray(place?.imageUrls) ? place.imageUrls : []),
+  ]);
+  const capped = merged.slice(0, Math.max(1, Number(maxImages) || 10));
+  if (!capped.length) {
+    clearPlaceImages(place);
+    return place;
+  }
+  place.imageUrls = capped;
+  place.images = capped.map((imageUrl) => ({
+    imageUrl,
+    authorName: null,
+    authorUrl: null,
+    uploadedAt: null,
+  }));
+  place.imageUrl = capped[0];
+  return place;
 }
 
 function mergePhotosIntoPlace(place, photos) {
@@ -310,117 +357,108 @@ function mergePhotosIntoPlace(place, photos) {
   return place;
 }
 
-function isCleanAboutItem(text) {
-  const t = String(text || '').trim();
-  if (!t || t.length < 2 || t.length > 120) return false;
-  if (/^\/[a-z]/i.test(t)) return false;
-  if (/^[\uE000-\uF8FF\u200B-\u200F]/.test(t)) return false;
-  if (/^Has /i.test(t)) return false;
-  return true;
+async function scrollAboutPanel(page) {
+  await evaluateWithTimeout(page, () => {
+    const pane = document.querySelector('[jsaction*="pane.attributes"]')
+      || document.querySelector('[role="main"]');
+    if (!pane) return;
+    const step = Math.max(280, Math.floor(pane.clientHeight * 0.85) || 320);
+    pane.scrollTop = 0;
+    for (let i = 0; i < 12; i++) {
+      pane.scrollTop += step;
+    }
+    pane.scrollTop = 0;
+    for (let i = 0; i < 12; i++) {
+      pane.scrollTop += step;
+    }
+  }, undefined, 6000).catch(() => { });
 }
-
-function looksLikeUserReview(text) {
-  const t = String(text || '');
-  if (t.length < 180) return false;
-  const signals = [
-    /\bI\s+(was|am|had|went|looked|will|completely)\b/i,
-    /\bmy\s+(trade-in|phone|device|experience)\b/i,
-    /\bhighly recommend\b/i,
-    /\bthis is the only\b/i,
-    /\baround \d+:\d+\s*(AM|PM)\b/i,
-    /\b(November|December|January|February|March|April|May|June|July|August|September|October)\s+\d{1,2}/i,
-    /\bstore manager\b/i,
-    /\bstars?\s*,\s*\d+\s*reviews?\b/i,
-  ];
-  return signals.filter((r) => r.test(t)).length >= 2;
-}
-
-const ABOUT_SECTION_HINTS = [
-  'Accessibility', 'Amenities', 'Crowd', 'Planning', 'Payments', 'Children',
-  'Parking', 'Offerings', 'Dining options', 'Service options', 'Highlights',
-  'From the business', 'Popular for', 'Atmosphere', 'Health and safety',
-];
 
 function parseAboutDom(sectionHints) {
   const n = (s) => String(s || '').replace(/\s+/g, ' ').trim();
-  const main = document.querySelector('[role="main"]');
-  if (!main) return { description: null, additionalInfo: {}, placesTags: [] };
+  const stripIcons = (s) => n(String(s || '').replace(/[\uE000-\uF8FF\u200B-\u200F]/g, ''));
 
-  let description = null;
-  const descSelectors = [
-    '.PbZDve',
-    '.wiI7pd',
-    '[data-section-id="overview"]',
-    'div[jsaction*="description"]',
-    'div[jsaction*="pane.attributes"] .fontBodyMedium',
-  ];
-  for (const sel of descSelectors) {
-    const el = main.querySelector(sel);
-    const text = n(el?.textContent);
-    if (text && text.length > 40 && text.length < 5000 && !looksLikeUserReview(text)) {
-      description = text;
-      break;
+  const main = document.querySelector('[jsaction*="pane.attributes"]')
+    || document.querySelector('[role="main"]');
+  if (!main) return { description: null, additionalInfo: {} };
+
+  const headerLookup = new Map(sectionHints.map((h) => [h.toLowerCase(), h]));
+  const resolveSection = (text) => {
+    const t = stripIcons(text);
+    if (!t || t.length > 80) return null;
+    const lower = t.toLowerCase();
+    if (headerLookup.has(lower)) return headerLookup.get(lower);
+    if (/service options|dining options|popular for|health and safety/i.test(t) && t.length < 50) {
+      return headerLookup.get(lower) || t;
     }
-  }
+    return null;
+  };
 
-  if (!description) {
-    const paragraphs = [...main.querySelectorAll('div,span,p')]
-      .map((el) => n(el.textContent))
-      .filter((t) => t.length > 60 && t.length < 3000 && /\s/.test(t) && !looksLikeUserReview(t));
-    const editorial = paragraphs.find((t) => !/reviews?|photos?|hours|menu|order|directions/i.test(t));
-    if (editorial) description = editorial;
-  }
+  const isItemLabel = (text, sectionTitle) => {
+    const t = stripIcons(text);
+    if (!t || t.length < 2 || t.length > 120) return null;
+    if (/^\/[a-z0-9_./-]+$/i.test(t)) return null;
+    if (/^has\s+/i.test(t)) return null;
+    if (sectionTitle && t.toLowerCase() === sectionTitle.toLowerCase()) return null;
+    return t;
+  };
 
   const additionalInfo = {};
-  const placesTags = [];
-  const isHeading = (text) => sectionHints.some((h) => {
-    const lower = text.toLowerCase();
-    return lower === h.toLowerCase() || lower.startsWith(h.toLowerCase());
-  });
+  const addItem = (section, item) => {
+    if (!additionalInfo[section]) additionalInfo[section] = new Set();
+    additionalInfo[section].add(item);
+  };
+
+  let currentSection = null;
+  const nodes = main.querySelectorAll(
+    'h2,h3,[role="heading"],div.fontTitleSmall,div.qrShPb,div.fontTitleMedium,li,button[aria-label],span[aria-label],div[aria-label]',
+  );
+
+  for (const el of nodes) {
+    const raw = el.getAttribute?.('aria-label') || el.textContent;
+    const text = stripIcons(raw);
+    if (!text) continue;
+
+    const section = resolveSection(text);
+    if (section) {
+      currentSection = section;
+      continue;
+    }
+
+    if (!currentSection) continue;
+    const item = isItemLabel(text, currentSection);
+    if (!item) continue;
+    if (el.children?.length > 0 && el.querySelector('li,span[aria-label],div[aria-label]')) continue;
+    addItem(currentSection, item);
+  }
 
   const headings = [...main.querySelectorAll('h2,h3,[role="heading"],div.fontTitleSmall,div.qrShPb,div.fontTitleMedium')];
   for (const heading of headings) {
-    const title = n(heading.textContent);
-    if (!title || title.length > 80) continue;
-    if (!isHeading(title) && !/options|accessibility|amenities|highlights|planning|payments/i.test(title)) continue;
+    const title = resolveSection(heading.textContent);
+    if (!title) continue;
 
-    const items = new Set();
+    const items = additionalInfo[title] || new Set();
     let node = heading.nextElementSibling;
     let steps = 0;
-    while (node && steps < 10) {
+    while (node && steps < 24) {
+      const nextTitle = resolveSection(node.textContent);
+      if (nextTitle && nextTitle !== title) break;
+
       [...node.querySelectorAll('span,li,div[aria-label],button[aria-label]')].forEach((el) => {
-        const item = n(el.getAttribute('aria-label') || el.textContent);
-        if (item && item !== title && isCleanAboutItem(item)) items.add(item);
+        const item = isItemLabel(el.getAttribute('aria-label') || el.textContent, title);
+        if (item) items.add(item);
       });
       node = node.nextElementSibling;
       steps++;
     }
-
-    if (items.size) {
-      additionalInfo[title] = [...items];
-      placesTags.push(...items);
-    }
+    if (items.size) additionalInfo[title] = items;
   }
 
-  [...main.querySelectorAll('button[data-item-id],div[data-item-id]')].forEach((el) => {
-    const id = el.getAttribute('data-item-id') || '';
-    if (!/place_attributes|attributes|about/i.test(id)) return;
-    const label = n(el.getAttribute('aria-label') || el.textContent);
-    if (isCleanAboutItem(label)) placesTags.push(label);
-  });
-
-  [...main.querySelectorAll('[aria-label]')].forEach((el) => {
-    const label = n(el.getAttribute('aria-label'));
-    if (!label || label.length > 60) return;
-    if (sectionHints.some((h) => label.toLowerCase().startsWith(h.toLowerCase()))) {
-      const items = [...el.querySelectorAll('[aria-label]')]
-        .map((child) => n(child.getAttribute('aria-label')))
-        .filter((t) => t && t !== label && isCleanAboutItem(t));
-      if (items.length) additionalInfo[label] = [...new Set(items)];
-    }
-  });
-
-  return { description, additionalInfo, placesTags: [...new Set(placesTags)] };
+  const out = {};
+  for (const [key, set] of Object.entries(additionalInfo)) {
+    if (set.size) out[key] = [...set];
+  }
+  return { description: null, additionalInfo: out };
 }
 
 export async function extractAboutFromOverview(page) {
@@ -451,11 +489,17 @@ export async function extractAboutFromOverview(page) {
     await sleep(1200);
   }
 
-  return page.evaluate(parseAboutDom, ABOUT_SECTION_HINTS).catch(() => ({
+  await scrollAboutPanel(page);
+  await sleep(400);
+
+  const data = await page.evaluate(parseAboutDom, ABOUT_SECTION_HINTS).catch(() => ({
     description: null,
     additionalInfo: {},
-    placesTags: [],
   }));
+  return {
+    ...data,
+    additionalInfo: normalizeAdditionalInfo(data.additionalInfo),
+  };
 }
 
 export async function extractAboutTab(page) {
@@ -471,21 +515,27 @@ export async function extractAboutTab(page) {
 
   if (!clicked) {
     console.log('[panels] About tab not found.');
-    return { description: null, additionalInfo: {}, placesTags: [] };
+    return { description: null, additionalInfo: {} };
   }
 
   console.log('[panels] Opened About tab.');
-  await sleep(1500);
+  await sleep(2000);
+
+  await scrollAboutPanel(page);
+  await sleep(400);
 
   const data = await page.evaluate(parseAboutDom, ABOUT_SECTION_HINTS).catch(() => ({
     description: null,
     additionalInfo: {},
-    placesTags: [],
   }));
 
-  const sectionCount = Object.keys(data.additionalInfo || {}).length;
-  console.log(`[panels] About: description=${data.description ? 'yes' : 'no'}, sections=${sectionCount}`);
-  return data;
+  const normalized = {
+    ...data,
+    additionalInfo: normalizeAdditionalInfo(data.additionalInfo),
+  };
+  const sectionCount = Object.keys(normalized.additionalInfo || {}).length;
+  console.log(`[panels] About: description=${normalized.description ? 'yes' : 'no'}, sections=${sectionCount}`);
+  return normalized;
 }
 
 const WEB_RESULTS_LABELS = [
@@ -697,20 +747,18 @@ function mergeWebResultsIntoPlace(place, webResults) {
 
 function mergeAboutIntoPlace(place, about) {
   if (!about) return place;
-  if (about.description && !place.description && !looksLikeUserReview(about.description)) {
-    place.description = about.description;
+  const aboutDesc = sanitizePlaceDescription(about.description);
+  if (aboutDesc && !place.description) {
+    place.description = aboutDesc;
   }
   if (about.additionalInfo && Object.keys(about.additionalInfo).length) {
-    place.additionalInfo = { ...(place.additionalInfo || {}), ...about.additionalInfo };
-  }
-  if (about.placesTags?.length) {
-    place.placesTags = [...new Set([...(place.placesTags || []), ...about.placesTags])];
+    place.additionalInfo = mergeAdditionalInfo(place.additionalInfo, about.additionalInfo);
   }
   return place;
 }
 
-export async function enrichPhotosAndAbout(page, place) {
-  console.log('[panels] Exploring photos, web results, and about...');
+export async function enrichPhotosAndAbout(page, place, { maxImages = 10 } = {}) {
+  console.log(`[panels] Exploring up to ${maxImages} images, web results, and about...`);
 
   await clickOverviewTab(page).catch(() => { });
   await sleep(800);
@@ -720,6 +768,7 @@ export async function enrichPhotosAndAbout(page, place) {
     imageUrls: await extractPhotosFromAppState(page),
     videoUrls: [],
   });
+  capPlaceImages(place, maxImages);
 
   const webResults = await extractWebResults(page);
   mergeWebResultsIntoPlace(place, webResults);
@@ -728,18 +777,28 @@ export async function enrichPhotosAndAbout(page, place) {
   mergeAboutIntoPlace(place, overviewAbout);
 
   await clickOverviewTab(page).catch(() => { });
-  await sleep(500);
+  await sleep(400);
 
   const tabAbout = await extractAboutTab(page);
   mergeAboutIntoPlace(place, tabAbout);
 
   await clickOverviewTab(page).catch(() => { });
-  await sleep(500);
+  await sleep(400);
 
-  mergePhotosIntoPlace(place, await extractPhotosAndVideos(page));
+  const current = filterGalleryImageUrls([
+    place?.imageUrl,
+    ...(Array.isArray(place?.imageUrls) ? place.imageUrls : []),
+  ]).length;
+  if (current < maxImages) {
+    mergePhotosIntoPlace(place, await extractPhotosAndVideos(page, {
+      maxScrolls: galleryScrollsForImageLimit(maxImages),
+      maxPhotos: maxImages,
+    }));
+  }
+  capPlaceImages(place, maxImages);
 
   await clickOverviewTab(page).catch(() => { });
-  await sleep(500);
+  await sleep(300);
 
   return place;
 }

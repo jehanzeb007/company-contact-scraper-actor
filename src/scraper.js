@@ -1,5 +1,19 @@
+import { parseAddressParts } from './addressParts.js';
 import { scrapePlaceViaPreviewApi } from './placeApi.js';
-import { enrichPhotosAndAbout, filterGalleryImageUrls } from './placePanels.js';
+import {
+  capPlaceImages,
+  clearPlaceImages,
+  enrichPhotosAndAbout,
+  filterGalleryImageUrls,
+} from './placePanels.js';
+import {
+  inferNameFromStreetAddress,
+  isWeakStructuralPlaceName,
+  parseMapsPageTitle,
+  sanitizePlaceDescription,
+} from './textHeuristics.js';
+
+export { parseAddressParts };
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -177,8 +191,12 @@ export async function checkAndRecoverFromDetour(page) {
 }
 
 export async function ensureTabbedLayout(page, options = {}) {
-  const { lang = 'en', maxAttempts = 3 } = options;
-  console.log('[maps] Running ensureTabbedLayout...');
+  const { lang = 'en', fast = false } = options;
+  const maxAttempts = options.maxAttempts ?? (fast ? 1 : 2);
+  const delays = fast
+    ? { overview: 400, recover: 600, navigate: 1000 }
+    : { overview: 800, recover: 1000, navigate: 1500 };
+  console.log(`[maps] Running ensureTabbedLayout${fast ? ' (fast)' : ''}...`);
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     await dismissSignInPromptSafe(page).catch(() => { });
@@ -189,23 +207,25 @@ export async function ensureTabbedLayout(page, options = {}) {
 
     const clickedOverview = await clickOverviewTab(page).catch(() => false);
     if (clickedOverview) {
-      await sleep(1000);
+      await sleep(delays.overview);
       if (await hasTabbedLayout(page)) return true;
     }
 
     const didRecoverDetour = await checkAndRecoverFromDetour(page).catch(() => false);
     if (didRecoverDetour) {
-      await sleep(1500);
+      await sleep(delays.recover);
       if (await hasTabbedLayout(page)) return true;
     }
+
+    if (fast) break;
 
     const canonicalUrl = await buildCanonicalPlaceUrl(page).catch(() => null);
     if (canonicalUrl && canonicalUrl !== page.url()) {
       await page.goto(enforceLanguage(canonicalUrl, lang), { waitUntil: 'domcontentloaded', timeout: 60_000 }).catch(() => { });
-      await sleep(2000);
-    } else {
+      await sleep(delays.navigate);
+    } else if (attempt < maxAttempts) {
       await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 }).catch(() => { });
-      await sleep(2000);
+      await sleep(delays.navigate);
     }
   }
 
@@ -217,7 +237,7 @@ export async function ensureTabbedLayout(page, options = {}) {
 export async function warmUpGoogleMaps(page, language = 'en') {
   console.log('[warmup] Warming up Google Maps session...');
   await page.goto(enforceLanguage('https://www.google.com/maps', language), { waitUntil: 'domcontentloaded', timeout: 60_000 });
-  await sleep(2500);
+  await sleep(1500);
   try {
     await page.evaluate(() => {
       const want = ['accept all', 'accept', 'i agree', 'consent', 'agree'];
@@ -225,7 +245,7 @@ export async function warmUpGoogleMaps(page, language = 'en') {
       const btn = [...document.querySelectorAll('button,[role="button"]')].find((b) => want.some((w) => n(b.textContent).includes(w)));
       if (btn) btn.click();
     });
-    await sleep(800);
+    await sleep(400);
   } catch { /* ignore */ }
   await dismissSignInPromptSafe(page).catch(() => { });
   console.log('[warmup] Session warm-up complete.');
@@ -348,69 +368,6 @@ export function unformatPhone(phone) {
   if (cleaned.length === 10) return `+1${cleaned}`;
   if (cleaned.length === 11 && cleaned.startsWith('1')) return `+${cleaned}`;
   return cleaned;
-}
-
-export function parseAddressParts(address) {
-  const stateNames = {
-    AL: 'Alabama', AK: 'Alaska', AZ: 'Arizona', AR: 'Arkansas', CA: 'California',
-    CO: 'Colorado', CT: 'Connecticut', DE: 'Delaware', FL: 'Florida', GA: 'Georgia',
-    HI: 'Hawaii', ID: 'Idaho', IL: 'Illinois', IN: 'Indiana', IA: 'Iowa',
-    KS: 'Kansas', KY: 'Kentucky', LA: 'Louisiana', ME: 'Maine', MD: 'Maryland',
-    MA: 'Massachusetts', MI: 'Michigan', MN: 'Minnesota', MS: 'Mississippi',
-    MO: 'Missouri', MT: 'Montana', NE: 'Nebraska', NV: 'Nevada', NH: 'New Hampshire',
-    NJ: 'New Jersey', NM: 'New Mexico', NY: 'New York', NC: 'North Carolina',
-    ND: 'North Dakota', OH: 'Ohio', OK: 'Oklahoma', OR: 'Oregon', PA: 'Pennsylvania',
-    RI: 'Rhode Island', SC: 'South Carolina', SD: 'South Dakota', TN: 'Tennessee',
-    TX: 'Texas', UT: 'Utah', VT: 'Vermont', VA: 'Virginia', WA: 'Washington',
-    WV: 'West Virginia', WI: 'Wisconsin', WY: 'Wyoming', DC: 'District of Columbia',
-  };
-  const parts = String(address || '').split(',').map(norm).filter(Boolean);
-  const out = { street: parts[0] || null, city: null, postalCode: null, state: null, countryCode: null };
-  if (parts.length < 2) return out;
-
-  const last = parts[parts.length - 1];
-  const second = parts[parts.length - 2];
-
-  if (/^\d{4,8}$/.test(second)) {
-    out.postalCode = second;
-    out.city = parts.length >= 3 ? parts[parts.length - 3] : null;
-    out.countryCode = last;
-  } else if (parts.length >= 3) {
-    const stateZipLine = second;
-    const usLine = stateZipLine.match(/^([A-Z]{2})\s+(\d{5}(?:-\d{4})?)$/);
-    if (usLine) {
-      out.state = stateNames[usLine[1]] || usLine[1];
-      out.postalCode = usLine[2];
-      out.city = parts.length >= 4 ? parts[parts.length - 3] : null;
-      out.countryCode = last;
-    } else {
-      out.city = second;
-      const stateZip = last || '';
-      const m = stateZip.match(/\b([A-Z]{2})\b(?:\s+([A-Z0-9 -]{3,12}))?/);
-      if (m) {
-        out.state = stateNames[m[1]] || m[1];
-        out.postalCode = m[2] ? norm(m[2]) : null;
-        out.countryCode = 'US';
-      } else {
-        out.countryCode = stateZip.length <= 30 ? stateZip : null;
-      }
-    }
-  } else {
-    out.city = second;
-    out.countryCode = last;
-  }
-
-  const PK_PROVINCES = ['Punjab', 'Sindh', 'Khyber Pakhtunkhwa', 'Balochistan', 'Islamabad Capital Territory'];
-  for (const part of parts) {
-    for (const prov of PK_PROVINCES) {
-      if (part.toLowerCase().includes(prov.toLowerCase())) out.state = prov;
-    }
-  }
-  if (!out.state && out.countryCode === 'Pakistan' && out.city === 'Lahore') {
-    out.state = 'Punjab';
-  }
-
-  return out;
 }
 
 function mergePlaceFields(place, patch) {
@@ -626,8 +583,32 @@ export async function extractPlaceInfo(page) {
       return out;
     })();
 
+    const locatedIn = (() => {
+      const el = [...document.querySelectorAll('button,a,div')].find((node) => {
+        const label = n(node.getAttribute('aria-label') || '');
+        return /^located in:/i.test(label);
+      });
+      if (!el) return null;
+      return n(el.getAttribute('aria-label')).replace(/^located in:\s*/i, '');
+    })();
+
+    const subTitle = (() => {
+      const h1Text = n(document.querySelector('h1.DUwDvf,h1')?.textContent);
+      const categoryBtn = document.querySelector('button.DkEaL,button[jsaction*="pane.rating.category"]');
+      const line = n(categoryBtn?.parentElement?.textContent || categoryBtn?.textContent);
+      if (!line) return null;
+      const parts = line.split(/\s*[·•]\s*/).map((p) => n(p)).filter(Boolean);
+      if (parts.length < 2) return null;
+      const parent = parts[parts.length - 1];
+      if (!parent || parent.toLowerCase() === h1Text.toLowerCase()) return null;
+      return parent;
+    })();
+
     return {
       name: $('h1.DUwDvf,h1'),
+      subTitle,
+      locatedIn,
+      documentTitle: document.title || '',
       overallRating,
       totalReviews,
       category: $('button.DkEaL,button[jsaction*="pane.rating.category"]'),
@@ -643,7 +624,58 @@ export async function extractPlaceInfo(page) {
     };
   });
 
-  return { ...info, ...parseAddressParts(info?.address) };
+  const merged = {
+    ...info,
+    pageTitleName: parseMapsPageTitle(info?.documentTitle),
+    ...parseAddressParts(info?.address),
+  };
+  delete merged.documentTitle;
+  return merged;
+}
+
+function applyResolvedDisplayName(place, candidates, { structuralLabel = null } = {}) {
+  const weak = structuralLabel || place?.name;
+  const types = place?.categories?.length ? place.categories : (place?.category ? [place.category] : []);
+  if (!isWeakStructuralPlaceName(weak, types)) return false;
+
+  for (const raw of candidates) {
+    const name = String(raw || '').replace(/\s+/g, ' ').trim();
+    if (!name || isWeakStructuralPlaceName(name, [])) continue;
+    if (name.toLowerCase() === String(weak || '').toLowerCase()) continue;
+    place.subTitle = weak;
+    place.name = name;
+    return true;
+  }
+  return false;
+}
+
+/** Replace floor/level titles with the parent venue name when Maps exposes one. */
+export async function resolvePlaceDisplayName(page, place) {
+  if (!place?.name) return place;
+
+  const types = place.categories?.length ? place.categories : (place.category ? [place.category] : []);
+  if (!isWeakStructuralPlaceName(place.name, types)) return place;
+
+  if (applyResolvedDisplayName(place, [
+    place.locatedIn,
+    place.subTitle,
+    inferNameFromStreetAddress(place.address),
+  ])) {
+    return place;
+  }
+
+  const dom = await extractPlaceInfo(page).catch(() => null);
+  if (dom && applyResolvedDisplayName(place, [
+    dom.locatedIn,
+    dom.subTitle,
+    dom.pageTitleName,
+    inferNameFromStreetAddress(place.address),
+  ])) {
+    if (dom.locatedIn) place.locatedIn = dom.locatedIn;
+    return place;
+  }
+
+  return place;
 }
 
 // ── Review distribution ───────────────────────────────────────────────────────
@@ -701,6 +733,22 @@ export function finalizePlaceReviewStats(place) {
 function hasReviewDistribution(place) {
   return Object.values(normalizeReviewsDistribution(place?.reviewsDistribution))
     .some((v) => Number(v) > 0);
+}
+
+export function placeCoreDataComplete(place) {
+  return Boolean(
+    place?.name?.trim()
+    && place?.address?.trim()
+    && (place?.phone || place?.website)
+    && place.overallRating != null
+    && place.totalReviews != null
+    && hasReviewDistribution(place),
+  );
+}
+
+export function shouldSkipHybridDomEnrichment(place, { includeImages = false } = {}) {
+  if (includeImages) return false;
+  return placeCoreDataComplete(place);
 }
 
 export async function extractReviewDistributionAPI(page) {
@@ -950,14 +998,20 @@ export async function extractContactFieldsFromDom(page) {
 }
 
 function needsContactEnrichment(place) {
-  return !place?.phone || !place?.website || !place?.menu || !place?.state;
+  return !place?.phone || !place?.website;
 }
 
 async function enrichContactFromPage(page, place, { language = 'en' } = {}) {
-  console.log('[hybrid] Enriching contact fields (phone, website, menu, state)...');
+  if (place?.phone && place?.website) {
+    if (place.address) mergePlaceFields(place, parseAddressParts(place.address));
+    console.log('[hybrid] Contact complete from API — skipping DOM contact enrichment.');
+    return place;
+  }
+
+  console.log('[hybrid] Enriching missing contact fields from Maps UI...');
   await dismissSignInPromptSafe(page).catch(() => { });
   await checkAndRecoverFromDetour(page).catch(() => { });
-  await ensureTabbedLayout(page, { lang: language });
+  await ensureTabbedLayout(page, { lang: language, fast: true });
   await enrichContactFromPage_extract(page, place);
   return place;
 }
@@ -979,7 +1033,7 @@ async function enrichContactFromPage_extract(page, place) {
   }
 
   if (place.address) {
-    Object.assign(place, parseAddressParts(place.address));
+    mergePlaceFields(place, parseAddressParts(place.address));
   }
 
   console.log(`[hybrid] Contact: phone=${place.phone || '-'} website=${place.website || '-'} menu=${place.menu || '-'} state=${place.state || '-'}`);
@@ -1014,7 +1068,23 @@ function needsReviewEnrichment(place) {
 }
 
 /** API place details + DOM/page-state for ratings, distribution, and contact fields. */
-export async function enrichPlaceWithHybridData(page, place, { language = 'en' } = {}) {
+export async function enrichPlaceWithHybridData(page, place, {
+  language = 'en',
+  includeImages = false,
+  maxImages = 10,
+} = {}) {
+  if (shouldSkipHybridDomEnrichment(place, { includeImages })) {
+    console.log('[hybrid] API data sufficient — skipping DOM enrichment.');
+    await resolvePlaceDisplayName(page, place);
+    if (place.address && (!place.street || !place.city)) {
+      mergePlaceFields(place, parseAddressParts(place.address));
+    }
+    finalizePlaceReviewStats(place);
+    return place;
+  }
+
+  await resolvePlaceDisplayName(page, place);
+
   const needsReviews = needsReviewEnrichment(place);
 
   if (needsReviews) {
@@ -1022,9 +1092,9 @@ export async function enrichPlaceWithHybridData(page, place, { language = 'en' }
   }
   if (needsReviews) {
     await dismissSignInPromptSafe(page).catch(() => { });
-    await ensureTabbedLayout(page, { lang: language });
+    await ensureTabbedLayout(page, { lang: language, fast: true });
     await nudgeToOverviewTab(page).catch(() => { });
-    await sleep(1000);
+    await sleep(600);
 
     const dom = await extractReviewSummaryFromDom(page);
     if (place.overallRating == null && dom.overallRating != null) place.overallRating = dom.overallRating;
@@ -1053,7 +1123,13 @@ export async function enrichPlaceWithHybridData(page, place, { language = 'en' }
   }
 
   await enrichContactFromPage(page, place, { language });
-  await enrichPhotosAndAbout(page, place);
+
+  if (includeImages) {
+    await enrichPhotosAndAbout(page, place, { maxImages });
+  }
+
+  if (includeImages) capPlaceImages(place, maxImages);
+  else clearPlaceImages(place);
   finalizePlaceReviewStats(place);
   return place;
 }
@@ -1089,13 +1165,8 @@ export function formatPlaceToOutputSchema(place, searchString = null) {
     searchPageLoadedUrl: null,
     isAdvertisement: false,
     title: place?.name || null,
-    subTitle: null,
-    description: (() => {
-      const d = place?.description || null;
-      if (!d) return null;
-      if (d.length > 180 && /\bI\s+(was|am|had|went)\b/i.test(d) && /\bhighly recommend\b/i.test(d)) return null;
-      return d;
-    })(),
+    subTitle: place?.subTitle || null,
+    description: sanitizePlaceDescription(place?.description),
     price: place?.price || null,
     categoryName,
     address: place?.address || null,
@@ -1110,7 +1181,7 @@ export function formatPlaceToOutputSchema(place, searchString = null) {
     phoneUnformatted: unformatPhone(place?.phone),
     claimThisBusiness: false,
     location,
-    locatedIn: null,
+    locatedIn: place?.locatedIn || null,
     plusCode: place?.plusCode || null,
     menu: place?.menu || null,
     servicesLink: null,
@@ -1137,7 +1208,6 @@ export function formatPlaceToOutputSchema(place, searchString = null) {
     hotelAds: [],
     openingHours: Array.isArray(place?.openingHours) ? place.openingHours : [],
     peopleAlsoSearch: [],
-    placesTags: Array.isArray(place?.placesTags) ? place.placesTags : [],
     reviewsTags: [],
     additionalInfo: place?.additionalInfo && typeof place.additionalInfo === 'object' ? place.additionalInfo : {},
     videoUrls,
@@ -1207,6 +1277,8 @@ export async function scrapeGoogleMapsPlace(page, {
   searchQuery = null,
   apiOnly = false,
   skipWarmUp = false,
+  includeImages = false,
+  maxImages = 10,
 }) {
   if (!skipWarmUp) {
     await warmUpGoogleMaps(page, language);
@@ -1235,7 +1307,7 @@ export async function scrapeGoogleMapsPlace(page, {
       const btn = [...document.querySelectorAll('button,[role="button"]')].find((b) => want.some((w) => n(b.textContent).includes(w)));
       if (btn) btn.click();
     });
-    await sleep(1000);
+    await sleep(500);
   } catch { /* ignore */ }
 
   await dismissSignInPromptSafe(page).catch(() => { });
@@ -1294,10 +1366,17 @@ export async function scrapeGoogleMapsPlace(page, {
   if (!place?.name) throw new Error('Could not resolve place details from API or DOM.');
 
   if (!apiOnly) {
-    await enrichPlaceWithHybridData(page, place, { language });
+    await enrichPlaceWithHybridData(page, place, { language, includeImages, maxImages });
   } else {
+    applyResolvedDisplayName(place, [
+      place.subTitle,
+      inferNameFromStreetAddress(place.address),
+    ]);
     finalizePlaceReviewStats(place);
   }
+
+  if (includeImages) capPlaceImages(place, maxImages);
+  else clearPlaceImages(place);
 
   place.pageUrl = place.pageUrl || pageUrl;
   place.cid = place.cid || cidFromUrl(pageUrl);

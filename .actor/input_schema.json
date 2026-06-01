@@ -76,6 +76,29 @@
       "default": true,
       "editor": "checkbox"
     },
+    "includeImages": {
+      "title": "Include place photos",
+      "type": "boolean",
+      "description": "When enabled, collects photo URLs plus web results and About from the Maps UI (slower). When disabled, those fields come from the preview API only and image fields are empty.",
+      "default": false,
+      "editor": "checkbox"
+    },
+    "maxImages": {
+      "title": "Max photos",
+      "type": "integer",
+      "description": "Maximum number of photo URLs to collect when includeImages is true. Fewer photos means less gallery scrolling.",
+      "default": 10,
+      "minimum": 1,
+      "maximum": 100,
+      "editor": "number"
+    },
+    "skipWarmUp": {
+      "title": "Skip Maps warm-up",
+      "type": "boolean",
+      "description": "Skip the initial google.com/maps visit before navigating to the place. Enabled by default for direct URL, CID, and Place ID runs.",
+      "default": true,
+      "editor": "checkbox"
+    },
     "apiOnly": {
       "title": "API Only",
       "type": "boolean",
