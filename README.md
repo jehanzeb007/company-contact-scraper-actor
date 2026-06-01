@@ -146,7 +146,6 @@ The actor writes one object to the default dataset. Some fields can be `null` or
 | `videoUrls` | array | Collected video URLs when available. |
 | `webResults` | array | Related web results shown in Google Maps. |
 | `additionalInfo` | object | About/attribute sections such as accessibility, amenities, planning, and payments. |
-| `placesTags` | array | Flattened tags/attributes from Google Maps. |
 | `permanentlyClosed` | boolean | Whether Google Maps marks the place permanently closed. |
 | `temporarilyClosed` | boolean | Whether Google Maps marks the place temporarily closed. |
 | `scrapedAt` | string | ISO timestamp when the item was scraped. |
@@ -215,7 +214,6 @@ The actor writes one object to the default dataset. Some fields can be `null` or
     }
   ],
   "additionalInfo": {},
-  "placesTags": [],
   "permanentlyClosed": false,
   "temporarilyClosed": false,
   "scrapedAt": "2026-05-25T08:40:00.000Z"

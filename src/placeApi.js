@@ -1,4 +1,13 @@
-export const norm = (s) => String(s || '').replace(/\s+/g, ' ').trim();
+import { resolveAddressParts } from './addressParts.js';
+import { extractAboutFromPreviewData } from './aboutInfo.js';
+import {
+  inferNameFromStreetAddress,
+  isWeakStructuralPlaceName,
+  norm,
+  normalizeAdditionalInfo,
+} from './textHeuristics.js';
+
+export { norm } from './textHeuristics.js';
 
 export function fidFromUrl(url) {
   try {
@@ -369,6 +378,91 @@ function extractPlaceRecords(data) {
   return records;
 }
 
+function scorePlaceNameCandidate(record, { searchQuery = null, address = null } = {}) {
+  if (!record || isWeakStructuralPlaceName(record.name, record.types)) return -1;
+
+  let score = 0;
+  const addr = norm(address || '');
+  const rAddr = norm(record.address || '');
+  if (addr && rAddr) {
+    if (addr === rAddr) score += 50;
+    else if (addr.includes(rAddr) || rAddr.includes(addr)) score += 25;
+  }
+
+  const reviews = Number(record.totalReviews);
+  if (Number.isFinite(reviews) && reviews > 0) {
+    score += Math.min(25, Math.log10(reviews + 1) * 8);
+  }
+
+  const primary = norm(record.types?.[0] || '').toLowerCase();
+  if (/mall|shopping|department|store|restaurant|museum|airport|hospital|university|church|park|hotel|stadium|arena|library|gym|spa|salon|bank|pharmacy|supermarket|establishment|point_of_interest/i.test(primary)) {
+    score += 15;
+  }
+
+  if (searchQuery) {
+    const q = norm(searchQuery).toLowerCase();
+    const title = record.name.toLowerCase();
+    if (title.includes(q) || q.includes(title)) score += 40;
+    for (const token of q.split(/\s+/).filter((t) => t.length > 2)) {
+      if (title.includes(token)) score += 8;
+    }
+  }
+
+  return score;
+}
+
+function findBetterPlaceName(records, weakRecord, hints = {}) {
+  let bestName = null;
+  let bestScore = 0;
+  const address = weakRecord.address || hints.address || null;
+
+  for (const r of records) {
+    if (r.fid === weakRecord.fid) continue;
+    const score = scorePlaceNameCandidate(r, { ...hints, address });
+    if (score > bestScore) {
+      bestScore = score;
+      bestName = r.name;
+    }
+  }
+
+  return bestScore >= 15 ? bestName : null;
+}
+
+function findAlternateNameNearFid(data, fid) {
+  let best = null;
+  walkArrays(data, (arr) => {
+    const idx = arr.indexOf(fid);
+    if (idx < 0) return;
+    const start = Math.max(0, idx - 20);
+    const end = Math.min(arr.length, idx + 80);
+    for (let i = start; i <= end - 4; i++) {
+      const candidateFid = arr[i];
+      if (typeof candidateFid !== 'string' || !FID_RE.test(candidateFid) || candidateFid === fid) continue;
+      const name = arr[i + 1];
+      if (typeof name !== 'string' || name.length < 2 || name.length > 200) continue;
+      if (arr[i + 2] !== null && arr[i + 2] !== undefined) continue;
+      const types = arr[i + 3];
+      if (!Array.isArray(types) || !types.length) continue;
+      if (isWeakStructuralPlaceName(name, types)) continue;
+      best = norm(name);
+    }
+  });
+  return best;
+}
+
+function resolvePlaceRecordName(record, records, hints, data) {
+  if (!record || !isWeakStructuralPlaceName(record.name, record.types)) return record;
+
+  const structuralLabel = record.name;
+  const resolved = findBetterPlaceName(records, record, hints)
+    || findAlternateNameNearFid(data, record.fid)
+    || inferNameFromStreetAddress(record.address);
+
+  if (!resolved || resolved.toLowerCase() === structuralLabel.toLowerCase()) return record;
+
+  return { ...record, name: resolved, structuralLabel };
+}
+
 function pickPlaceRecord(records, { expectedFid = null, searchQuery = null } = {}) {
   if (!records.length) return null;
   if (expectedFid) {
@@ -427,72 +521,6 @@ function extractOpeningHoursFromText(text) {
     hours.push({ day: m[1], hours: cleaned });
   }
   return hours;
-}
-
-const ABOUT_SECTION_HINTS = [
-  'Accessibility', 'Amenities', 'Crowd', 'Planning', 'Payments', 'Children',
-  'Parking', 'Offerings', 'Dining options', 'Service options', 'Highlights',
-  'From the business', 'Popular for', 'Atmosphere', 'Health and safety',
-  'Service options', 'Activities', 'Getting here',
-];
-
-function extractAboutFromPreviewData(data) {
-  const additionalInfo = {};
-  const placesTags = [];
-  let description = null;
-  const headerSet = new Set(ABOUT_SECTION_HINTS.map((h) => h.toLowerCase()));
-
-  walkArrays(data, (arr) => {
-    if (!arr.length || typeof arr[0] !== 'string') return;
-    const title = norm(arr[0]);
-    if (!title || title.length > 80) return;
-
-    if (headerSet.has(title.toLowerCase())) {
-      const items = [];
-      const collect = (node) => {
-        if (typeof node === 'string') {
-          const t = norm(node);
-          if (t && t !== title && t.length > 1 && t.length < 120 && !/^https?:\/\//i.test(t)) items.push(t);
-        } else if (Array.isArray(node)) {
-          for (const child of node) collect(child);
-        }
-      };
-      for (let i = 1; i < arr.length; i++) collect(arr[i]);
-      const unique = [...new Set(items)];
-      if (unique.length) {
-        additionalInfo[title] = unique;
-        placesTags.push(...unique);
-      }
-      return;
-    }
-
-    if (title.toLowerCase() === 'from the business' || title.toLowerCase() === 'about') {
-      for (let i = 1; i < arr.length; i++) {
-        const v = arr[i];
-        if (typeof v === 'string' && v.length > 40 && v.length < 5000) {
-          description = norm(v);
-          break;
-        }
-      }
-    }
-  });
-
-  if (!description) {
-    walkArrays(data, (arr) => {
-      for (const v of arr) {
-        if (typeof v !== 'string' || v.length < 80 || v.length > 4000) continue;
-        if (/^https?:\/\//i.test(v) || FID_RE.test(v) || /\breviews?\b/i.test(v)) continue;
-        if (v.split(' ').length < 12) continue;
-        if (!description || v.length > description.length) description = norm(v);
-      }
-    });
-  }
-
-  return {
-    description,
-    additionalInfo,
-    placesTags: [...new Set(placesTags)],
-  };
 }
 
 function unwrapGoogleRedirectUrl(url) {
@@ -605,10 +633,14 @@ export function parsePreviewPlaceResponse(text, hints = {}) {
   }
 
   const records = extractPlaceRecords(data);
-  const record = pickPlaceRecord(records, {
+  let record = pickPlaceRecord(records, {
     expectedFid: hints.fid || null,
     searchQuery: hints.query || null,
   });
+  record = resolvePlaceRecordName(record, records, {
+    searchQuery: hints.query || null,
+    address: record?.address || null,
+  }, data);
 
   if (!record?.name) {
     throw new Error('preview/place JSON did not contain a recognizable place record');
@@ -637,17 +669,20 @@ export function parsePreviewPlaceResponse(text, hints = {}) {
   const nearFidStats = findReviewStatsNearFidInText(stripped, record.fid);
   const overallRating = record.overallRating ?? nearFidStats.overallRating ?? null;
   const totalReviews = record.totalReviews ?? nearFidStats.totalReviews ?? null;
-  const about = extractAboutFromPreviewData(data);
+  const about = extractAboutFromPreviewData(data, walkArrays);
   const webResults = extractWebResultsFromPreviewData(data);
   const imageUrls = extractImageUrlsFromPreviewData(data);
   const hero = record.imageUrl && isGalleryImageUrl(record.imageUrl) ? record.imageUrl : null;
+  const formattedAddress = record.address || deepContact.address || null;
 
   return {
     name: record.name,
+    subTitle: record.structuralLabel || null,
     overallRating,
     totalReviews,
     category: record.types[0] || null,
-    address: record.address || deepContact.address || null,
+    categories: record.types,
+    address: formattedAddress,
     phone: record.phone || deepContact.phone || textContact.phone || null,
     website: record.website || deepContact.website || textContact.website || null,
     menu: record.menu || deepContact.menu || textContact.menu || null,
@@ -660,78 +695,10 @@ export function parsePreviewPlaceResponse(text, hints = {}) {
     fid: record.fid,
     location,
     description: about.description,
-    additionalInfo: about.additionalInfo,
-    placesTags: about.placesTags,
+    additionalInfo: normalizeAdditionalInfo(about.additionalInfo),
     webResults,
-    ...parseAddressPartsFromAddress(record.address || deepContact.address),
+    ...resolveAddressParts({ data, address: formattedAddress, fid: record.fid }),
   };
-}
-
-const PK_PROVINCES = [
-  'Punjab', 'Sindh', 'Khyber Pakhtunkhwa', 'Balochistan',
-  'Islamabad Capital Territory', 'Gilgit-Baltistan', 'Azad Kashmir',
-];
-
-function parseAddressPartsFromAddress(address) {
-  if (!address) return {};
-  const parts = String(address).split(',').map(norm).filter(Boolean);
-  const out = { street: parts[0] || null, city: null, postalCode: null, state: null, countryCode: null };
-  if (parts.length < 2) return out;
-
-  const last = parts[parts.length - 1];
-  const second = parts[parts.length - 2];
-
-  for (const part of parts) {
-    for (const prov of PK_PROVINCES) {
-      if (part.toLowerCase().includes(prov.toLowerCase())) out.state = prov;
-    }
-  }
-
-  const US_STATES = {
-    AL: 'Alabama', AK: 'Alaska', AZ: 'Arizona', AR: 'Arkansas', CA: 'California',
-    CO: 'Colorado', CT: 'Connecticut', DE: 'Delaware', FL: 'Florida', GA: 'Georgia',
-    HI: 'Hawaii', ID: 'Idaho', IL: 'Illinois', IN: 'Indiana', IA: 'Iowa',
-    KS: 'Kansas', KY: 'Kentucky', LA: 'Louisiana', ME: 'Maine', MD: 'Maryland',
-    MA: 'Massachusetts', MI: 'Michigan', MN: 'Minnesota', MS: 'Mississippi',
-    MO: 'Missouri', MT: 'Montana', NE: 'Nebraska', NV: 'Nevada', NH: 'New Hampshire',
-    NJ: 'New Jersey', NM: 'New Mexico', NY: 'New York', NC: 'North Carolina',
-    ND: 'North Dakota', OH: 'Ohio', OK: 'Oklahoma', OR: 'Oregon', PA: 'Pennsylvania',
-    RI: 'Rhode Island', SC: 'South Carolina', SD: 'South Dakota', TN: 'Tennessee',
-    TX: 'Texas', UT: 'Utah', VT: 'Vermont', VA: 'Virginia', WA: 'Washington',
-    WV: 'West Virginia', WI: 'Wisconsin', WY: 'Wyoming', DC: 'District of Columbia',
-  };
-
-  if (/^\d{4,8}$/.test(second)) {
-    out.postalCode = second;
-    out.city = parts.length >= 3 ? parts[parts.length - 3] : null;
-    out.countryCode = last;
-  } else if (parts.length >= 3) {
-    const usLine = second.match(/^([A-Z]{2})\s+(\d{5}(?:-\d{4})?)$/);
-    if (usLine) {
-      out.state = US_STATES[usLine[1]] || usLine[1];
-      out.postalCode = usLine[2];
-      out.city = parts.length >= 4 ? parts[parts.length - 3] : null;
-      out.countryCode = last;
-    } else {
-      out.city = second;
-      out.countryCode = last;
-      const m = last.match(/\b([A-Z]{2})\b(?:\s+([A-Z0-9 -]{3,12}))?/);
-      if (m) {
-        out.state = out.state || US_STATES[m[1]] || m[1];
-        out.postalCode = m[2] ? norm(m[2]) : null;
-        out.countryCode = 'US';
-      }
-    }
-  } else {
-    out.city = second;
-    out.countryCode = last;
-  }
-
-  if (!out.state && out.countryCode === 'Pakistan' && out.city === 'Lahore') {
-    out.state = 'Punjab';
-  }
-
-  return out;
 }
 
 export function waitForPreviewPlaceResponse(page, { expectedFid = null, timeoutMs = 45_000 } = {}) {

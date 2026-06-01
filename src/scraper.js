@@ -1,5 +1,14 @@
+import { parseAddressParts } from './addressParts.js';
 import { scrapePlaceViaPreviewApi } from './placeApi.js';
 import { enrichPhotosAndAbout, filterGalleryImageUrls } from './placePanels.js';
+import {
+  inferNameFromStreetAddress,
+  isWeakStructuralPlaceName,
+  parseMapsPageTitle,
+  sanitizePlaceDescription,
+} from './textHeuristics.js';
+
+export { parseAddressParts };
 
 // ── Utilities ─────────────────────────────────────────────────────────────────
 export const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -350,69 +359,6 @@ export function unformatPhone(phone) {
   return cleaned;
 }
 
-export function parseAddressParts(address) {
-  const stateNames = {
-    AL: 'Alabama', AK: 'Alaska', AZ: 'Arizona', AR: 'Arkansas', CA: 'California',
-    CO: 'Colorado', CT: 'Connecticut', DE: 'Delaware', FL: 'Florida', GA: 'Georgia',
-    HI: 'Hawaii', ID: 'Idaho', IL: 'Illinois', IN: 'Indiana', IA: 'Iowa',
-    KS: 'Kansas', KY: 'Kentucky', LA: 'Louisiana', ME: 'Maine', MD: 'Maryland',
-    MA: 'Massachusetts', MI: 'Michigan', MN: 'Minnesota', MS: 'Mississippi',
-    MO: 'Missouri', MT: 'Montana', NE: 'Nebraska', NV: 'Nevada', NH: 'New Hampshire',
-    NJ: 'New Jersey', NM: 'New Mexico', NY: 'New York', NC: 'North Carolina',
-    ND: 'North Dakota', OH: 'Ohio', OK: 'Oklahoma', OR: 'Oregon', PA: 'Pennsylvania',
-    RI: 'Rhode Island', SC: 'South Carolina', SD: 'South Dakota', TN: 'Tennessee',
-    TX: 'Texas', UT: 'Utah', VT: 'Vermont', VA: 'Virginia', WA: 'Washington',
-    WV: 'West Virginia', WI: 'Wisconsin', WY: 'Wyoming', DC: 'District of Columbia',
-  };
-  const parts = String(address || '').split(',').map(norm).filter(Boolean);
-  const out = { street: parts[0] || null, city: null, postalCode: null, state: null, countryCode: null };
-  if (parts.length < 2) return out;
-
-  const last = parts[parts.length - 1];
-  const second = parts[parts.length - 2];
-
-  if (/^\d{4,8}$/.test(second)) {
-    out.postalCode = second;
-    out.city = parts.length >= 3 ? parts[parts.length - 3] : null;
-    out.countryCode = last;
-  } else if (parts.length >= 3) {
-    const stateZipLine = second;
-    const usLine = stateZipLine.match(/^([A-Z]{2})\s+(\d{5}(?:-\d{4})?)$/);
-    if (usLine) {
-      out.state = stateNames[usLine[1]] || usLine[1];
-      out.postalCode = usLine[2];
-      out.city = parts.length >= 4 ? parts[parts.length - 3] : null;
-      out.countryCode = last;
-    } else {
-      out.city = second;
-      const stateZip = last || '';
-      const m = stateZip.match(/\b([A-Z]{2})\b(?:\s+([A-Z0-9 -]{3,12}))?/);
-      if (m) {
-        out.state = stateNames[m[1]] || m[1];
-        out.postalCode = m[2] ? norm(m[2]) : null;
-        out.countryCode = 'US';
-      } else {
-        out.countryCode = stateZip.length <= 30 ? stateZip : null;
-      }
-    }
-  } else {
-    out.city = second;
-    out.countryCode = last;
-  }
-
-  const PK_PROVINCES = ['Punjab', 'Sindh', 'Khyber Pakhtunkhwa', 'Balochistan', 'Islamabad Capital Territory'];
-  for (const part of parts) {
-    for (const prov of PK_PROVINCES) {
-      if (part.toLowerCase().includes(prov.toLowerCase())) out.state = prov;
-    }
-  }
-  if (!out.state && out.countryCode === 'Pakistan' && out.city === 'Lahore') {
-    out.state = 'Punjab';
-  }
-
-  return out;
-}
-
 function mergePlaceFields(place, patch) {
   if (!patch) return;
   for (const [key, value] of Object.entries(patch)) {
@@ -626,8 +572,32 @@ export async function extractPlaceInfo(page) {
       return out;
     })();
 
+    const locatedIn = (() => {
+      const el = [...document.querySelectorAll('button,a,div')].find((node) => {
+        const label = n(node.getAttribute('aria-label') || '');
+        return /^located in:/i.test(label);
+      });
+      if (!el) return null;
+      return n(el.getAttribute('aria-label')).replace(/^located in:\s*/i, '');
+    })();
+
+    const subTitle = (() => {
+      const h1Text = n(document.querySelector('h1.DUwDvf,h1')?.textContent);
+      const categoryBtn = document.querySelector('button.DkEaL,button[jsaction*="pane.rating.category"]');
+      const line = n(categoryBtn?.parentElement?.textContent || categoryBtn?.textContent);
+      if (!line) return null;
+      const parts = line.split(/\s*[·•]\s*/).map((p) => n(p)).filter(Boolean);
+      if (parts.length < 2) return null;
+      const parent = parts[parts.length - 1];
+      if (!parent || parent.toLowerCase() === h1Text.toLowerCase()) return null;
+      return parent;
+    })();
+
     return {
       name: $('h1.DUwDvf,h1'),
+      subTitle,
+      locatedIn,
+      documentTitle: document.title || '',
       overallRating,
       totalReviews,
       category: $('button.DkEaL,button[jsaction*="pane.rating.category"]'),
@@ -643,7 +613,58 @@ export async function extractPlaceInfo(page) {
     };
   });
 
-  return { ...info, ...parseAddressParts(info?.address) };
+  const merged = {
+    ...info,
+    pageTitleName: parseMapsPageTitle(info?.documentTitle),
+    ...parseAddressParts(info?.address),
+  };
+  delete merged.documentTitle;
+  return merged;
+}
+
+function applyResolvedDisplayName(place, candidates, { structuralLabel = null } = {}) {
+  const weak = structuralLabel || place?.name;
+  const types = place?.categories?.length ? place.categories : (place?.category ? [place.category] : []);
+  if (!isWeakStructuralPlaceName(weak, types)) return false;
+
+  for (const raw of candidates) {
+    const name = String(raw || '').replace(/\s+/g, ' ').trim();
+    if (!name || isWeakStructuralPlaceName(name, [])) continue;
+    if (name.toLowerCase() === String(weak || '').toLowerCase()) continue;
+    place.subTitle = weak;
+    place.name = name;
+    return true;
+  }
+  return false;
+}
+
+/** Replace floor/level titles with the parent venue name when Maps exposes one. */
+export async function resolvePlaceDisplayName(page, place) {
+  if (!place?.name) return place;
+
+  const types = place.categories?.length ? place.categories : (place.category ? [place.category] : []);
+  if (!isWeakStructuralPlaceName(place.name, types)) return place;
+
+  if (applyResolvedDisplayName(place, [
+    place.locatedIn,
+    place.subTitle,
+    inferNameFromStreetAddress(place.address),
+  ])) {
+    return place;
+  }
+
+  const dom = await extractPlaceInfo(page).catch(() => null);
+  if (dom && applyResolvedDisplayName(place, [
+    dom.locatedIn,
+    dom.subTitle,
+    dom.pageTitleName,
+    inferNameFromStreetAddress(place.address),
+  ])) {
+    if (dom.locatedIn) place.locatedIn = dom.locatedIn;
+    return place;
+  }
+
+  return place;
 }
 
 // ── Review distribution ───────────────────────────────────────────────────────
@@ -979,7 +1000,7 @@ async function enrichContactFromPage_extract(page, place) {
   }
 
   if (place.address) {
-    Object.assign(place, parseAddressParts(place.address));
+    mergePlaceFields(place, parseAddressParts(place.address));
   }
 
   console.log(`[hybrid] Contact: phone=${place.phone || '-'} website=${place.website || '-'} menu=${place.menu || '-'} state=${place.state || '-'}`);
@@ -1015,6 +1036,8 @@ function needsReviewEnrichment(place) {
 
 /** API place details + DOM/page-state for ratings, distribution, and contact fields. */
 export async function enrichPlaceWithHybridData(page, place, { language = 'en' } = {}) {
+  await resolvePlaceDisplayName(page, place);
+
   const needsReviews = needsReviewEnrichment(place);
 
   if (needsReviews) {
@@ -1089,13 +1112,8 @@ export function formatPlaceToOutputSchema(place, searchString = null) {
     searchPageLoadedUrl: null,
     isAdvertisement: false,
     title: place?.name || null,
-    subTitle: null,
-    description: (() => {
-      const d = place?.description || null;
-      if (!d) return null;
-      if (d.length > 180 && /\bI\s+(was|am|had|went)\b/i.test(d) && /\bhighly recommend\b/i.test(d)) return null;
-      return d;
-    })(),
+    subTitle: place?.subTitle || null,
+    description: sanitizePlaceDescription(place?.description),
     price: place?.price || null,
     categoryName,
     address: place?.address || null,
@@ -1110,7 +1128,7 @@ export function formatPlaceToOutputSchema(place, searchString = null) {
     phoneUnformatted: unformatPhone(place?.phone),
     claimThisBusiness: false,
     location,
-    locatedIn: null,
+    locatedIn: place?.locatedIn || null,
     plusCode: place?.plusCode || null,
     menu: place?.menu || null,
     servicesLink: null,
@@ -1137,7 +1155,6 @@ export function formatPlaceToOutputSchema(place, searchString = null) {
     hotelAds: [],
     openingHours: Array.isArray(place?.openingHours) ? place.openingHours : [],
     peopleAlsoSearch: [],
-    placesTags: Array.isArray(place?.placesTags) ? place.placesTags : [],
     reviewsTags: [],
     additionalInfo: place?.additionalInfo && typeof place.additionalInfo === 'object' ? place.additionalInfo : {},
     videoUrls,
@@ -1296,6 +1313,10 @@ export async function scrapeGoogleMapsPlace(page, {
   if (!apiOnly) {
     await enrichPlaceWithHybridData(page, place, { language });
   } else {
+    applyResolvedDisplayName(place, [
+      place.subTitle,
+      inferNameFromStreetAddress(place.address),
+    ]);
     finalizePlaceReviewStats(place);
   }
 
