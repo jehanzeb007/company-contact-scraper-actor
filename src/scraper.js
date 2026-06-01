@@ -1,6 +1,11 @@
 import { parseAddressParts } from './addressParts.js';
 import { scrapePlaceViaPreviewApi } from './placeApi.js';
-import { enrichPhotosAndAbout, filterGalleryImageUrls } from './placePanels.js';
+import {
+  capPlaceImages,
+  clearPlaceImages,
+  enrichPhotosAndAbout,
+  filterGalleryImageUrls,
+} from './placePanels.js';
 import {
   inferNameFromStreetAddress,
   isWeakStructuralPlaceName,
@@ -1035,7 +1040,11 @@ function needsReviewEnrichment(place) {
 }
 
 /** API place details + DOM/page-state for ratings, distribution, and contact fields. */
-export async function enrichPlaceWithHybridData(page, place, { language = 'en' } = {}) {
+export async function enrichPlaceWithHybridData(page, place, {
+  language = 'en',
+  includeImages = false,
+  maxImages = 10,
+} = {}) {
   await resolvePlaceDisplayName(page, place);
 
   const needsReviews = needsReviewEnrichment(place);
@@ -1076,7 +1085,9 @@ export async function enrichPlaceWithHybridData(page, place, { language = 'en' }
   }
 
   await enrichContactFromPage(page, place, { language });
-  await enrichPhotosAndAbout(page, place);
+  await enrichPhotosAndAbout(page, place, { includeImages, maxImages });
+  if (includeImages) capPlaceImages(place, maxImages);
+  else clearPlaceImages(place);
   finalizePlaceReviewStats(place);
   return place;
 }
@@ -1224,6 +1235,8 @@ export async function scrapeGoogleMapsPlace(page, {
   searchQuery = null,
   apiOnly = false,
   skipWarmUp = false,
+  includeImages = false,
+  maxImages = 10,
 }) {
   if (!skipWarmUp) {
     await warmUpGoogleMaps(page, language);
@@ -1311,7 +1324,7 @@ export async function scrapeGoogleMapsPlace(page, {
   if (!place?.name) throw new Error('Could not resolve place details from API or DOM.');
 
   if (!apiOnly) {
-    await enrichPlaceWithHybridData(page, place, { language });
+    await enrichPlaceWithHybridData(page, place, { language, includeImages, maxImages });
   } else {
     applyResolvedDisplayName(place, [
       place.subTitle,
@@ -1319,6 +1332,9 @@ export async function scrapeGoogleMapsPlace(page, {
     ]);
     finalizePlaceReviewStats(place);
   }
+
+  if (includeImages) capPlaceImages(place, maxImages);
+  else clearPlaceImages(place);
 
   place.pageUrl = place.pageUrl || pageUrl;
   place.cid = place.cid || cidFromUrl(pageUrl);

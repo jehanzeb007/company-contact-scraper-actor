@@ -57,6 +57,8 @@ const {
   language = 'en',
   headless = true,
   apiOnly = false,
+  includeImages = false,
+  maxImages = 10,
 } = input;
 
 // ── Proxy ─────────────────────────────────────────────────────────────────────
@@ -167,6 +169,8 @@ try {
     searchQuery: resolvedTarget.searchQuery,
     apiOnly,
     skipWarmUp: resolvedTarget.skipWarmUp,
+    includeImages: includeImages === true || includeImages === 'true',
+    maxImages: Math.min(100, Math.max(1, Number(maxImages) || 10)),
   });
 
   if (resolvedTarget.skipWarmUp && resolvedTarget.searchQuery && placeOutput?.title) {

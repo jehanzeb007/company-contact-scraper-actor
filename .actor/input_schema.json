@@ -76,6 +76,22 @@
       "default": true,
       "editor": "checkbox"
     },
+    "includeImages": {
+      "title": "Include place photos",
+      "type": "boolean",
+      "description": "When enabled, opens the Photos panel and collects image URLs (slower). When disabled, image fields are empty for a faster run.",
+      "default": false,
+      "editor": "checkbox"
+    },
+    "maxImages": {
+      "title": "Max photos",
+      "type": "integer",
+      "description": "Maximum number of photo URLs to collect when includeImages is true. Fewer photos means less gallery scrolling.",
+      "default": 10,
+      "minimum": 1,
+      "maximum": 100,
+      "editor": "number"
+    },
     "apiOnly": {
       "title": "API Only",
       "type": "boolean",

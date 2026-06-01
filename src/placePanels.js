@@ -245,9 +245,10 @@ export async function extractPhotosFromOverview(page) {
   return { imageUrls, videoUrls };
 }
 
-export async function extractPhotosAndVideos(page, { maxScrolls = 15 } = {}) {
+export async function extractPhotosAndVideos(page, { maxScrolls = 15, maxPhotos = null } = {}) {
   const photoSet = new Set();
   const videoSet = new Set();
+  const photoLimit = maxPhotos != null ? Math.max(1, Number(maxPhotos) || 10) : null;
 
   const fromState = await extractPhotosFromAppState(page);
   for (const u of fromState) photoSet.add(u);
@@ -259,7 +260,7 @@ export async function extractPhotosAndVideos(page, { maxScrolls = 15 } = {}) {
   const opened = await openPhotosPanel(page);
   if (!opened) {
     console.log('[panels] Photos & videos panel not opened — using overview/state URLs only.');
-  } else {
+  } else if (!photoLimit || photoSet.size < photoLimit) {
     for (let i = 0; i < maxScrolls; i++) {
       const batch = await page.evaluate(collectMediaUrlsFromDom).catch(() => ({ photoUrls: [], videoUrls: [] }));
       for (const u of batch.photoUrls || []) {
@@ -271,6 +272,8 @@ export async function extractPhotosAndVideos(page, { maxScrolls = 15 } = {}) {
         if (n && isVideoMediaUrl(n)) videoSet.add(n);
       }
 
+      if (photoLimit && photoSet.size >= photoLimit) break;
+
       const scrolled = await scrollGallery(page);
       if (!scrolled) break;
       await sleep(500);
@@ -280,7 +283,8 @@ export async function extractPhotosAndVideos(page, { maxScrolls = 15 } = {}) {
     for (const u of afterTab) photoSet.add(u);
   }
 
-  const imageUrls = filterGalleryImageUrls([...photoSet]);
+  let imageUrls = filterGalleryImageUrls([...photoSet]);
+  if (photoLimit) imageUrls = imageUrls.slice(0, photoLimit);
   const videoUrls = [...new Set([...videoSet].map((u) => normalizeMediaUrl(u)).filter(Boolean))];
   const images = imageUrls.map((imageUrl) => ({
     imageUrl,
@@ -291,6 +295,42 @@ export async function extractPhotosAndVideos(page, { maxScrolls = 15 } = {}) {
 
   console.log(`[panels] Collected ${imageUrls.length} photo URL(s), ${videoUrls.length} video URL(s).`);
   return { imageUrls, videoUrls, images };
+}
+
+export function galleryScrollsForImageLimit(maxImages) {
+  const n = Math.max(1, Number(maxImages) || 10);
+  return Math.min(15, Math.max(2, Math.ceil(n / 4)));
+}
+
+export function clearPlaceImages(place) {
+  if (!place) return place;
+  place.imageUrl = null;
+  place.imageUrls = [];
+  place.images = [];
+  place.videoUrls = [];
+  return place;
+}
+
+export function capPlaceImages(place, maxImages = 10) {
+  if (!place) return place;
+  const merged = filterGalleryImageUrls([
+    place?.imageUrl,
+    ...(Array.isArray(place?.imageUrls) ? place.imageUrls : []),
+  ]);
+  const capped = merged.slice(0, Math.max(1, Number(maxImages) || 10));
+  if (!capped.length) {
+    clearPlaceImages(place);
+    return place;
+  }
+  place.imageUrls = capped;
+  place.images = capped.map((imageUrl) => ({
+    imageUrl,
+    authorName: null,
+    authorUrl: null,
+    uploadedAt: null,
+  }));
+  place.imageUrl = capped[0];
+  return place;
 }
 
 function mergePhotosIntoPlace(place, photos) {
@@ -717,17 +757,20 @@ function mergeAboutIntoPlace(place, about) {
   return place;
 }
 
-export async function enrichPhotosAndAbout(page, place) {
-  console.log('[panels] Exploring photos, web results, and about...');
+export async function enrichPhotosAndAbout(page, place, { includeImages = false, maxImages = 10 } = {}) {
+  console.log('[panels] Exploring web results and about' + (includeImages ? ` (up to ${maxImages} images)` : ' (images skipped)') + '...');
 
   await clickOverviewTab(page).catch(() => { });
   await sleep(800);
 
-  mergePhotosIntoPlace(place, await extractPhotosFromOverview(page));
-  mergePhotosIntoPlace(place, {
-    imageUrls: await extractPhotosFromAppState(page),
-    videoUrls: [],
-  });
+  if (includeImages) {
+    mergePhotosIntoPlace(place, await extractPhotosFromOverview(page));
+    mergePhotosIntoPlace(place, {
+      imageUrls: await extractPhotosFromAppState(page),
+      videoUrls: [],
+    });
+    capPlaceImages(place, maxImages);
+  }
 
   const webResults = await extractWebResults(page);
   mergeWebResultsIntoPlace(place, webResults);
@@ -744,7 +787,19 @@ export async function enrichPhotosAndAbout(page, place) {
   await clickOverviewTab(page).catch(() => { });
   await sleep(500);
 
-  mergePhotosIntoPlace(place, await extractPhotosAndVideos(page));
+  if (includeImages) {
+    const current = filterGalleryImageUrls([
+      place?.imageUrl,
+      ...(Array.isArray(place?.imageUrls) ? place.imageUrls : []),
+    ]).length;
+    if (current < maxImages) {
+      mergePhotosIntoPlace(place, await extractPhotosAndVideos(page, {
+        maxScrolls: galleryScrollsForImageLimit(maxImages),
+        maxPhotos: maxImages,
+      }));
+    }
+    capPlaceImages(place, maxImages);
+  }
 
   await clickOverviewTab(page).catch(() => { });
   await sleep(500);

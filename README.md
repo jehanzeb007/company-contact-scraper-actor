@@ -49,6 +49,8 @@ If `strategy` is `auto` and multiple target fields are provided, the priority is
 | `website` | string | No | `null` | Company website used to verify the correct search result. Strongly recommended with `searchQuery`. |
 | `proxyConfig` | object | No | Apify residential proxy | Apify proxy configuration. Residential proxies are recommended for cloud runs. |
 | `blockAssets` | boolean | No | `true` | Blocks image/font/media requests during the main scrape to reduce bandwidth. |
+| `includeImages` | boolean | No | `false` | Collect place photos from the Maps UI. Disabled by default for faster runs. |
+| `maxImages` | integer | No | `10` | Cap on photo URLs when `includeImages` is `true` (1–100). |
 | `apiOnly` | boolean | No | `false` | Uses only the Maps preview API and disables DOM fallback/enrichment. Leave `false` for best completeness. |
 | `language` | string | No | `en` | Google Maps UI language code, for example `en`, `es`, `fr`, `de`. |
 | `headless` | boolean | No | `true` | Puppeteer headless mode. Keep `true` on Apify Cloud. |
