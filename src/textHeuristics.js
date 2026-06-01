@@ -186,6 +186,7 @@ function isOpaqueIdLabel(label) {
   const t = norm(label);
   if (!t || /\s/.test(t)) return false;
   if (t.length < 8) return false;
+  if (/^\d+ah[a-z0-9_-]+$/i.test(t)) return true;
   if (!/^[a-z0-9]+$/i.test(t)) return false;
   if (/[aeiou]/i.test(t)) return false;
   return true;
