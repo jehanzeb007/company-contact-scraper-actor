@@ -79,7 +79,7 @@
     "includeImages": {
       "title": "Include place photos",
       "type": "boolean",
-      "description": "When enabled, opens the Photos panel and collects image URLs (slower). When disabled, image fields are empty for a faster run.",
+      "description": "When enabled, collects photo URLs plus web results and About from the Maps UI (slower). When disabled, those fields come from the preview API only and image fields are empty.",
       "default": false,
       "editor": "checkbox"
     },
@@ -91,13 +91,6 @@
       "minimum": 1,
       "maximum": 100,
       "editor": "number"
-    },
-    "enrichPanels": {
-      "title": "Enrich web results & About (DOM)",
-      "type": "boolean",
-      "description": "When enabled, opens Maps tabs to scrape web results and About sections from the UI. The preview API already includes these when available — leave disabled for faster runs.",
-      "default": false,
-      "editor": "checkbox"
     },
     "skipWarmUp": {
       "title": "Skip Maps warm-up",

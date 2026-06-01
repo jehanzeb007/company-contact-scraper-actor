@@ -59,7 +59,6 @@ const {
   apiOnly = false,
   includeImages = false,
   maxImages = 10,
-  enrichPanels = false,
   skipWarmUp,
 } = input;
 
@@ -173,7 +172,6 @@ try {
     skipWarmUp: skipWarmUp === false || skipWarmUp === 'false' ? false : resolvedTarget.skipWarmUp,
     includeImages: includeImages === true || includeImages === 'true',
     maxImages: Math.min(100, Math.max(1, Number(maxImages) || 10)),
-    enrichPanels: enrichPanels === true || enrichPanels === 'true',
   });
 
   if (resolvedTarget.skipWarmUp && resolvedTarget.searchQuery && placeOutput?.title) {

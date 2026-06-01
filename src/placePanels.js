@@ -757,58 +757,45 @@ function mergeAboutIntoPlace(place, about) {
   return place;
 }
 
-export async function enrichPhotosAndAbout(page, place, {
-  includeImages = false,
-  maxImages = 10,
-  enrichPanels = true,
-} = {}) {
-  const parts = [];
-  if (includeImages) parts.push(`up to ${maxImages} images`);
-  if (enrichPanels) parts.push('web results & about');
-  console.log(`[panels] Exploring${parts.length ? ` ${parts.join(', ')}` : ' panels'}...`);
+export async function enrichPhotosAndAbout(page, place, { maxImages = 10 } = {}) {
+  console.log(`[panels] Exploring up to ${maxImages} images, web results, and about...`);
 
   await clickOverviewTab(page).catch(() => { });
-  await sleep(includeImages ? 800 : 400);
+  await sleep(800);
 
-  if (includeImages) {
-    mergePhotosIntoPlace(place, await extractPhotosFromOverview(page));
-    mergePhotosIntoPlace(place, {
-      imageUrls: await extractPhotosFromAppState(page),
-      videoUrls: [],
-    });
-    capPlaceImages(place, maxImages);
+  mergePhotosIntoPlace(place, await extractPhotosFromOverview(page));
+  mergePhotosIntoPlace(place, {
+    imageUrls: await extractPhotosFromAppState(page),
+    videoUrls: [],
+  });
+  capPlaceImages(place, maxImages);
+
+  const webResults = await extractWebResults(page);
+  mergeWebResultsIntoPlace(place, webResults);
+
+  const overviewAbout = await extractAboutFromOverview(page);
+  mergeAboutIntoPlace(place, overviewAbout);
+
+  await clickOverviewTab(page).catch(() => { });
+  await sleep(400);
+
+  const tabAbout = await extractAboutTab(page);
+  mergeAboutIntoPlace(place, tabAbout);
+
+  await clickOverviewTab(page).catch(() => { });
+  await sleep(400);
+
+  const current = filterGalleryImageUrls([
+    place?.imageUrl,
+    ...(Array.isArray(place?.imageUrls) ? place.imageUrls : []),
+  ]).length;
+  if (current < maxImages) {
+    mergePhotosIntoPlace(place, await extractPhotosAndVideos(page, {
+      maxScrolls: galleryScrollsForImageLimit(maxImages),
+      maxPhotos: maxImages,
+    }));
   }
-
-  if (enrichPanels) {
-    const webResults = await extractWebResults(page);
-    mergeWebResultsIntoPlace(place, webResults);
-
-    const overviewAbout = await extractAboutFromOverview(page);
-    mergeAboutIntoPlace(place, overviewAbout);
-
-    await clickOverviewTab(page).catch(() => { });
-    await sleep(400);
-
-    const tabAbout = await extractAboutTab(page);
-    mergeAboutIntoPlace(place, tabAbout);
-
-    await clickOverviewTab(page).catch(() => { });
-    await sleep(400);
-  }
-
-  if (includeImages) {
-    const current = filterGalleryImageUrls([
-      place?.imageUrl,
-      ...(Array.isArray(place?.imageUrls) ? place.imageUrls : []),
-    ]).length;
-    if (current < maxImages) {
-      mergePhotosIntoPlace(place, await extractPhotosAndVideos(page, {
-        maxScrolls: galleryScrollsForImageLimit(maxImages),
-        maxPhotos: maxImages,
-      }));
-    }
-    capPlaceImages(place, maxImages);
-  }
+  capPlaceImages(place, maxImages);
 
   await clickOverviewTab(page).catch(() => { });
   await sleep(300);

@@ -746,8 +746,8 @@ export function placeCoreDataComplete(place) {
   );
 }
 
-export function shouldSkipHybridDomEnrichment(place, { includeImages = false, enrichPanels = false } = {}) {
-  if (includeImages || enrichPanels) return false;
+export function shouldSkipHybridDomEnrichment(place, { includeImages = false } = {}) {
+  if (includeImages) return false;
   return placeCoreDataComplete(place);
 }
 
@@ -1072,9 +1072,8 @@ export async function enrichPlaceWithHybridData(page, place, {
   language = 'en',
   includeImages = false,
   maxImages = 10,
-  enrichPanels = false,
 } = {}) {
-  if (shouldSkipHybridDomEnrichment(place, { includeImages, enrichPanels })) {
+  if (shouldSkipHybridDomEnrichment(place, { includeImages })) {
     console.log('[hybrid] API data sufficient — skipping DOM enrichment.');
     await resolvePlaceDisplayName(page, place);
     if (place.address && (!place.street || !place.city)) {
@@ -1125,8 +1124,8 @@ export async function enrichPlaceWithHybridData(page, place, {
 
   await enrichContactFromPage(page, place, { language });
 
-  if (includeImages || enrichPanels) {
-    await enrichPhotosAndAbout(page, place, { includeImages, maxImages, enrichPanels });
+  if (includeImages) {
+    await enrichPhotosAndAbout(page, place, { maxImages });
   }
 
   if (includeImages) capPlaceImages(place, maxImages);
@@ -1280,7 +1279,6 @@ export async function scrapeGoogleMapsPlace(page, {
   skipWarmUp = false,
   includeImages = false,
   maxImages = 10,
-  enrichPanels = false,
 }) {
   if (!skipWarmUp) {
     await warmUpGoogleMaps(page, language);
@@ -1368,7 +1366,7 @@ export async function scrapeGoogleMapsPlace(page, {
   if (!place?.name) throw new Error('Could not resolve place details from API or DOM.');
 
   if (!apiOnly) {
-    await enrichPlaceWithHybridData(page, place, { language, includeImages, maxImages, enrichPanels });
+    await enrichPlaceWithHybridData(page, place, { language, includeImages, maxImages });
   } else {
     applyResolvedDisplayName(place, [
       place.subTitle,
