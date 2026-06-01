@@ -13,8 +13,9 @@ Scrape any business profile from Google Maps — get contact details, address, r
 | 📍 Address | Full address + parsed street, city, state, ZIP, country |
 | ⭐ Ratings | Average score, total reviews, star-by-star breakdown |
 | 🕐 Hours | Opening hours for each day |
-| 📸 Photos | Image URLs with author and upload date |
-| 🌐 Web Results | Related web links shown in the Maps panel |
+| 📸 Photos | Image URLs (optional — enable `includeImages`; capped by `maxImages`) |
+| 🌐 Web Results | Related web links from the Maps panel (with `includeImages`) |
+| ℹ️ About | Description and attribute sections when available (API or `includeImages`) |
 | 🔑 IDs | CID, Feature ID, Place ID, Knowledge Graph ID |
 
 > **Note:** Individual review text is **not** collected — only the star distribution summary.
@@ -93,7 +94,11 @@ Paste the URL directly from your browser:
 | `language` | string | `en` | Maps UI language (e.g. `en`, `es`, `fr`, `de`) |
 | `apiOnly` | boolean | `false` | Use Maps API only — leave `false` for the most complete data |
 | `blockAssets` | boolean | `true` | Block images/fonts during scrape to save bandwidth |
+| `includeImages` | boolean | `false` | When `true`, collects photos, web results, and About from the Maps UI (slower) |
+| `maxImages` | integer | `10` | Max photo URLs when `includeImages` is `true` (1–100) |
+| `skipWarmUp` | boolean | `true` | Skip the initial Maps homepage visit (URL/CID/Place ID). Set `false` if a run fails |
 | `proxyConfig` | object | Residential | Apify proxy config — residential proxies recommended |
+| `headless` | boolean | `true` | Puppeteer headless mode — keep `true` on Apify Cloud |
 
 ---
 
@@ -139,6 +144,9 @@ Google Maps doesn't always show every field. Fields the actor can't find are ret
 
 **Should I include `website` with my search query?**
 Yes — it greatly improves accuracy by confirming the right business was found.
+
+**What does `includeImages` do?**
+When `false` (default), the actor skips the slow Photos/About DOM pass. Contact, ratings, address, and hours still come from the Maps preview API. Set `includeImages` to `true` when you need photo URLs, extra web results, or About details from the live page.
 
 **What proxy should I use?**
 Residential proxies (the default) are recommended for reliable results on Apify Cloud.
