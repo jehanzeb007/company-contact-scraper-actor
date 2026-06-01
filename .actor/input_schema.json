@@ -92,6 +92,20 @@
       "maximum": 100,
       "editor": "number"
     },
+    "enrichPanels": {
+      "title": "Enrich web results & About (DOM)",
+      "type": "boolean",
+      "description": "When enabled, opens Maps tabs to scrape web results and About sections from the UI. The preview API already includes these when available — leave disabled for faster runs.",
+      "default": false,
+      "editor": "checkbox"
+    },
+    "skipWarmUp": {
+      "title": "Skip Maps warm-up",
+      "type": "boolean",
+      "description": "Skip the initial google.com/maps visit before navigating to the place. Enabled by default for direct URL, CID, and Place ID runs.",
+      "default": true,
+      "editor": "checkbox"
+    },
     "apiOnly": {
       "title": "API Only",
       "type": "boolean",

@@ -53,7 +53,7 @@ class UrlResolutionStrategy extends TargetResolutionStrategy {
       targetUrl: input.url,
       searchString: input.url,
       searchQuery: null,
-      skipWarmUp: false,
+      skipWarmUp: input.skipWarmUp !== false,
     };
   }
 }
@@ -75,7 +75,7 @@ class CidResolutionStrategy extends TargetResolutionStrategy {
       targetUrl,
       searchString: String(input.cid),
       searchQuery: null,
-      skipWarmUp: false,
+      skipWarmUp: input.skipWarmUp !== false,
     };
   }
 }
@@ -97,7 +97,7 @@ class PlaceIdResolutionStrategy extends TargetResolutionStrategy {
       targetUrl,
       searchString: input.placeId,
       searchQuery: null,
-      skipWarmUp: false,
+      skipWarmUp: input.skipWarmUp !== false,
     };
   }
 }

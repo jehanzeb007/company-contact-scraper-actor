@@ -757,11 +757,18 @@ function mergeAboutIntoPlace(place, about) {
   return place;
 }
 
-export async function enrichPhotosAndAbout(page, place, { includeImages = false, maxImages = 10 } = {}) {
-  console.log('[panels] Exploring web results and about' + (includeImages ? ` (up to ${maxImages} images)` : ' (images skipped)') + '...');
+export async function enrichPhotosAndAbout(page, place, {
+  includeImages = false,
+  maxImages = 10,
+  enrichPanels = true,
+} = {}) {
+  const parts = [];
+  if (includeImages) parts.push(`up to ${maxImages} images`);
+  if (enrichPanels) parts.push('web results & about');
+  console.log(`[panels] Exploring${parts.length ? ` ${parts.join(', ')}` : ' panels'}...`);
 
   await clickOverviewTab(page).catch(() => { });
-  await sleep(800);
+  await sleep(includeImages ? 800 : 400);
 
   if (includeImages) {
     mergePhotosIntoPlace(place, await extractPhotosFromOverview(page));
@@ -772,20 +779,22 @@ export async function enrichPhotosAndAbout(page, place, { includeImages = false,
     capPlaceImages(place, maxImages);
   }
 
-  const webResults = await extractWebResults(page);
-  mergeWebResultsIntoPlace(place, webResults);
+  if (enrichPanels) {
+    const webResults = await extractWebResults(page);
+    mergeWebResultsIntoPlace(place, webResults);
 
-  const overviewAbout = await extractAboutFromOverview(page);
-  mergeAboutIntoPlace(place, overviewAbout);
+    const overviewAbout = await extractAboutFromOverview(page);
+    mergeAboutIntoPlace(place, overviewAbout);
 
-  await clickOverviewTab(page).catch(() => { });
-  await sleep(500);
+    await clickOverviewTab(page).catch(() => { });
+    await sleep(400);
 
-  const tabAbout = await extractAboutTab(page);
-  mergeAboutIntoPlace(place, tabAbout);
+    const tabAbout = await extractAboutTab(page);
+    mergeAboutIntoPlace(place, tabAbout);
 
-  await clickOverviewTab(page).catch(() => { });
-  await sleep(500);
+    await clickOverviewTab(page).catch(() => { });
+    await sleep(400);
+  }
 
   if (includeImages) {
     const current = filterGalleryImageUrls([
@@ -802,7 +811,7 @@ export async function enrichPhotosAndAbout(page, place, { includeImages = false,
   }
 
   await clickOverviewTab(page).catch(() => { });
-  await sleep(500);
+  await sleep(300);
 
   return place;
 }

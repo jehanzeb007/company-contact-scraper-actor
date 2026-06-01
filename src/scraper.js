@@ -191,8 +191,12 @@ export async function checkAndRecoverFromDetour(page) {
 }
 
 export async function ensureTabbedLayout(page, options = {}) {
-  const { lang = 'en', maxAttempts = 3 } = options;
-  console.log('[maps] Running ensureTabbedLayout...');
+  const { lang = 'en', fast = false } = options;
+  const maxAttempts = options.maxAttempts ?? (fast ? 1 : 2);
+  const delays = fast
+    ? { overview: 400, recover: 600, navigate: 1000 }
+    : { overview: 800, recover: 1000, navigate: 1500 };
+  console.log(`[maps] Running ensureTabbedLayout${fast ? ' (fast)' : ''}...`);
 
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
     await dismissSignInPromptSafe(page).catch(() => { });
@@ -203,23 +207,25 @@ export async function ensureTabbedLayout(page, options = {}) {
 
     const clickedOverview = await clickOverviewTab(page).catch(() => false);
     if (clickedOverview) {
-      await sleep(1000);
+      await sleep(delays.overview);
       if (await hasTabbedLayout(page)) return true;
     }
 
     const didRecoverDetour = await checkAndRecoverFromDetour(page).catch(() => false);
     if (didRecoverDetour) {
-      await sleep(1500);
+      await sleep(delays.recover);
       if (await hasTabbedLayout(page)) return true;
     }
+
+    if (fast) break;
 
     const canonicalUrl = await buildCanonicalPlaceUrl(page).catch(() => null);
     if (canonicalUrl && canonicalUrl !== page.url()) {
       await page.goto(enforceLanguage(canonicalUrl, lang), { waitUntil: 'domcontentloaded', timeout: 60_000 }).catch(() => { });
-      await sleep(2000);
-    } else {
+      await sleep(delays.navigate);
+    } else if (attempt < maxAttempts) {
       await page.reload({ waitUntil: 'domcontentloaded', timeout: 60_000 }).catch(() => { });
-      await sleep(2000);
+      await sleep(delays.navigate);
     }
   }
 
@@ -231,7 +237,7 @@ export async function ensureTabbedLayout(page, options = {}) {
 export async function warmUpGoogleMaps(page, language = 'en') {
   console.log('[warmup] Warming up Google Maps session...');
   await page.goto(enforceLanguage('https://www.google.com/maps', language), { waitUntil: 'domcontentloaded', timeout: 60_000 });
-  await sleep(2500);
+  await sleep(1500);
   try {
     await page.evaluate(() => {
       const want = ['accept all', 'accept', 'i agree', 'consent', 'agree'];
@@ -239,7 +245,7 @@ export async function warmUpGoogleMaps(page, language = 'en') {
       const btn = [...document.querySelectorAll('button,[role="button"]')].find((b) => want.some((w) => n(b.textContent).includes(w)));
       if (btn) btn.click();
     });
-    await sleep(800);
+    await sleep(400);
   } catch { /* ignore */ }
   await dismissSignInPromptSafe(page).catch(() => { });
   console.log('[warmup] Session warm-up complete.');
@@ -729,6 +735,22 @@ function hasReviewDistribution(place) {
     .some((v) => Number(v) > 0);
 }
 
+export function placeCoreDataComplete(place) {
+  return Boolean(
+    place?.name?.trim()
+    && place?.address?.trim()
+    && (place?.phone || place?.website)
+    && place.overallRating != null
+    && place.totalReviews != null
+    && hasReviewDistribution(place),
+  );
+}
+
+export function shouldSkipHybridDomEnrichment(place, { includeImages = false, enrichPanels = false } = {}) {
+  if (includeImages || enrichPanels) return false;
+  return placeCoreDataComplete(place);
+}
+
 export async function extractReviewDistributionAPI(page) {
   const raw = await page.evaluate(() => {
     try {
@@ -976,14 +998,20 @@ export async function extractContactFieldsFromDom(page) {
 }
 
 function needsContactEnrichment(place) {
-  return !place?.phone || !place?.website || !place?.menu || !place?.state;
+  return !place?.phone || !place?.website;
 }
 
 async function enrichContactFromPage(page, place, { language = 'en' } = {}) {
-  console.log('[hybrid] Enriching contact fields (phone, website, menu, state)...');
+  if (place?.phone && place?.website) {
+    if (place.address) mergePlaceFields(place, parseAddressParts(place.address));
+    console.log('[hybrid] Contact complete from API — skipping DOM contact enrichment.');
+    return place;
+  }
+
+  console.log('[hybrid] Enriching missing contact fields from Maps UI...');
   await dismissSignInPromptSafe(page).catch(() => { });
   await checkAndRecoverFromDetour(page).catch(() => { });
-  await ensureTabbedLayout(page, { lang: language });
+  await ensureTabbedLayout(page, { lang: language, fast: true });
   await enrichContactFromPage_extract(page, place);
   return place;
 }
@@ -1044,7 +1072,18 @@ export async function enrichPlaceWithHybridData(page, place, {
   language = 'en',
   includeImages = false,
   maxImages = 10,
+  enrichPanels = false,
 } = {}) {
+  if (shouldSkipHybridDomEnrichment(place, { includeImages, enrichPanels })) {
+    console.log('[hybrid] API data sufficient — skipping DOM enrichment.');
+    await resolvePlaceDisplayName(page, place);
+    if (place.address && (!place.street || !place.city)) {
+      mergePlaceFields(place, parseAddressParts(place.address));
+    }
+    finalizePlaceReviewStats(place);
+    return place;
+  }
+
   await resolvePlaceDisplayName(page, place);
 
   const needsReviews = needsReviewEnrichment(place);
@@ -1054,9 +1093,9 @@ export async function enrichPlaceWithHybridData(page, place, {
   }
   if (needsReviews) {
     await dismissSignInPromptSafe(page).catch(() => { });
-    await ensureTabbedLayout(page, { lang: language });
+    await ensureTabbedLayout(page, { lang: language, fast: true });
     await nudgeToOverviewTab(page).catch(() => { });
-    await sleep(1000);
+    await sleep(600);
 
     const dom = await extractReviewSummaryFromDom(page);
     if (place.overallRating == null && dom.overallRating != null) place.overallRating = dom.overallRating;
@@ -1085,7 +1124,11 @@ export async function enrichPlaceWithHybridData(page, place, {
   }
 
   await enrichContactFromPage(page, place, { language });
-  await enrichPhotosAndAbout(page, place, { includeImages, maxImages });
+
+  if (includeImages || enrichPanels) {
+    await enrichPhotosAndAbout(page, place, { includeImages, maxImages, enrichPanels });
+  }
+
   if (includeImages) capPlaceImages(place, maxImages);
   else clearPlaceImages(place);
   finalizePlaceReviewStats(place);
@@ -1237,6 +1280,7 @@ export async function scrapeGoogleMapsPlace(page, {
   skipWarmUp = false,
   includeImages = false,
   maxImages = 10,
+  enrichPanels = false,
 }) {
   if (!skipWarmUp) {
     await warmUpGoogleMaps(page, language);
@@ -1265,7 +1309,7 @@ export async function scrapeGoogleMapsPlace(page, {
       const btn = [...document.querySelectorAll('button,[role="button"]')].find((b) => want.some((w) => n(b.textContent).includes(w)));
       if (btn) btn.click();
     });
-    await sleep(1000);
+    await sleep(500);
   } catch { /* ignore */ }
 
   await dismissSignInPromptSafe(page).catch(() => { });
@@ -1324,7 +1368,7 @@ export async function scrapeGoogleMapsPlace(page, {
   if (!place?.name) throw new Error('Could not resolve place details from API or DOM.');
 
   if (!apiOnly) {
-    await enrichPlaceWithHybridData(page, place, { language, includeImages, maxImages });
+    await enrichPlaceWithHybridData(page, place, { language, includeImages, maxImages, enrichPanels });
   } else {
     applyResolvedDisplayName(place, [
       place.subTitle,

@@ -51,6 +51,8 @@ If `strategy` is `auto` and multiple target fields are provided, the priority is
 | `blockAssets` | boolean | No | `true` | Blocks image/font/media requests during the main scrape to reduce bandwidth. |
 | `includeImages` | boolean | No | `false` | Collect place photos from the Maps UI. Disabled by default for faster runs. |
 | `maxImages` | integer | No | `10` | Cap on photo URLs when `includeImages` is `true` (1–100). |
+| `enrichPanels` | boolean | No | `false` | DOM scrape for web results and About tabs. Preview API usually covers this; keep off for speed. |
+| `skipWarmUp` | boolean | No | `true` (url/cid/placeId) | Skip the initial Maps homepage visit. Set `false` if a run fails without warm-up. |
 | `apiOnly` | boolean | No | `false` | Uses only the Maps preview API and disables DOM fallback/enrichment. Leave `false` for best completeness. |
 | `language` | string | No | `en` | Google Maps UI language code, for example `en`, `es`, `fr`, `de`. |
 | `headless` | boolean | No | `true` | Puppeteer headless mode. Keep `true` on Apify Cloud. |
