@@ -701,47 +701,6 @@ export function parsePreviewPlaceResponse(text, hints = {}) {
   };
 }
 
-export function waitForPreviewPlaceResponse(page, { expectedFid = null, timeoutMs = 45_000 } = {}) {
-  return new Promise((resolve, reject) => {
-    let settled = false;
-
-    const finish = (fn, value) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      page.off('response', onResponse);
-      fn(value);
-    };
-
-    const timer = setTimeout(() => {
-      finish(resolve, null);
-    }, timeoutMs);
-
-    const onResponse = async (response) => {
-      try {
-        const url = response.url();
-        if (!url.includes('/maps/preview/place')) return;
-        if (response.status() !== 200) return;
-
-        const text = await response.text();
-        if (!text || !stripXssiPrefix(text).trim().startsWith('[')) return;
-
-        const pb = new URL(url).searchParams.get('pb');
-        if (expectedFid && !responseContainsFid(text, expectedFid) && !pbContainsFid(pb, expectedFid)) {
-          console.log(`[api] Ignoring preview/place for different feature id.`);
-          return;
-        }
-
-        console.log(`[api] Intercepted matching preview/place (${text.length} bytes)`);
-        finish(resolve, { pb, text, url });
-      } catch (e) {
-        finish(reject, e);
-      }
-    };
-
-    page.on('response', onResponse);
-  });
-}
 
 export async function fetchPreviewPlaceInBrowser(page, { pb, language = 'en', referer = 'https://www.google.com/' }) {
   const apiUrl = buildPreviewPlaceUrl({ pb, language });
