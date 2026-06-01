@@ -1275,8 +1275,8 @@ export async function scrapeGoogleMapsPlace(page, {
   placeId = null,
   searchString = null,
   searchQuery = null,
-  apiOnly = false,
-  skipWarmUp = false,
+  skipHybridEnrich = false,
+  skipWarmUp = true,
   includeImages = false,
   maxImages = 10,
 }) {
@@ -1349,23 +1349,20 @@ export async function scrapeGoogleMapsPlace(page, {
         placeId,
         searchQuery,
       }));
-    } else if (!apiOnly) {
-      console.warn('[api] No feature id in final URL — cannot call preview/place.');
     } else {
-      throw new Error('apiOnly: no feature id (0x...:0x...) in final Maps URL.');
+      console.warn('[api] No feature id in final URL — cannot call preview/place.');
     }
   } catch (apiErr) {
-    if (apiOnly) throw apiErr;
     console.warn(`[api] preview/place failed: ${apiErr.message}`);
   }
 
-  if (!place?.name && !apiOnly) {
+  if (!place?.name) {
     place = await scrapeGoogleMapsPlaceDom(page, { url, language, placeId });
   }
 
   if (!place?.name) throw new Error('Could not resolve place details from API or DOM.');
 
-  if (!apiOnly) {
+  if (!skipHybridEnrich) {
     await enrichPlaceWithHybridData(page, place, { language, includeImages, maxImages });
   } else {
     applyResolvedDisplayName(place, [

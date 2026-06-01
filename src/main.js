@@ -55,12 +55,11 @@ const {
   proxyConfig: proxyInput = { useApifyProxy: false },
   blockAssets = true,
   language = 'en',
-  headless = true,
-  apiOnly = false,
   includeImages = false,
   maxImages = 10,
-  skipWarmUp,
 } = input;
+
+const wantsImages = includeImages === true || includeImages === 'true';
 
 // ── Proxy ─────────────────────────────────────────────────────────────────────
 const proxyConfiguration = await Actor.createProxyConfiguration(proxyInput);
@@ -101,10 +100,8 @@ if (proxyUrl) {
   launchArgs.push(`--proxy-server=${parsed.host}`);
 }
 
-const isHeadless = headless === 'shell' ? 'shell' : headless === false || headless === 'false' ? false : true;
-
 const launchOptions = buildPuppeteerLaunchOptions({
-  headless: isHeadless,
+  headless: true,
   args: launchArgs,
   defaultViewport: { width: 1280, height: 900 },
 });
@@ -161,20 +158,33 @@ try {
   const resolvedTarget = await resolutionStrategy.resolve({ page, input, language });
   targetUrl = resolvedTarget.targetUrl;
 
-  // ── Scrape company / place details ──────────────────────────────────────────
-  placeOutput = await scrapeGoogleMapsPlace(page, {
+  // ── Scrape company / place details (skip warm-up first; retry with warm-up on failure) ──
+  const scrapeOptions = {
     url: targetUrl,
     language,
     placeId: placeId || null,
     searchString: resolvedTarget.searchString,
     searchQuery: resolvedTarget.searchQuery,
-    apiOnly,
-    skipWarmUp: skipWarmUp === false || skipWarmUp === 'false' ? false : resolvedTarget.skipWarmUp,
-    includeImages: includeImages === true || includeImages === 'true',
+    skipHybridEnrich: !wantsImages,
+    includeImages: wantsImages,
     maxImages: Math.min(100, Math.max(1, Number(maxImages) || 10)),
-  });
+  };
 
-  if (resolvedTarget.skipWarmUp && resolvedTarget.searchQuery && placeOutput?.title) {
+  let scrapeErr;
+  for (const skipWarmUp of [true, false]) {
+    try {
+      placeOutput = await scrapeGoogleMapsPlace(page, { ...scrapeOptions, skipWarmUp });
+      scrapeErr = null;
+      break;
+    } catch (err) {
+      scrapeErr = err;
+      if (!skipWarmUp) throw err;
+      console.warn(`[retry] Scrape failed without Maps warm-up: ${err.message}. Retrying with warm-up...`);
+    }
+  }
+  if (scrapeErr) throw scrapeErr;
+
+  if (resolvedTarget.searchQuery && placeOutput?.title) {
     const q = resolvedTarget.searchQuery.toLowerCase();
     const t = String(placeOutput.title).toLowerCase();
     const lead = q.split(/\s+/).find((w) => w.length > 3);

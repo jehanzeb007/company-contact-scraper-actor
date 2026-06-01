@@ -113,7 +113,23 @@ If `strategy` is `auto` and multiple target fields are provided, the priority is
 
 The actor writes one object to the default dataset. Some fields can be `null` or empty arrays if Google Maps does not expose the data.
 
+<<<<<<< Updated upstream
 ### Main Output Fields
+=======
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `strategy` | string | `auto` | How to find the place: `auto`, `url`, `cid`, `placeId`, or `search` |
+| `url` | string | — | Google Maps place URL |
+| `cid` | string | — | Google Maps CID |
+| `placeId` | string | — | Google Place ID |
+| `searchQuery` | string | — | Business name to search |
+| `website` | string | — | Company website — helps verify the right result when searching |
+| `language` | string | `en` | Maps UI language (e.g. `en`, `es`, `fr`, `de`) |
+| `blockAssets` | boolean | `true` | Block images/fonts during scrape to save bandwidth |
+| `includeImages` | boolean | `false` | When `true`, collects photos, web results, and About from the Maps UI (slower). When `false`, details come from the preview API with DOM fallback only if needed |
+| `maxImages` | integer | `10` | Max photo URLs when `includeImages` is `true` (1–100) |
+| `proxyConfig` | object | Residential | Apify proxy config — residential proxies recommended |
+>>>>>>> Stashed changes
 
 | Field | Type | Description |
 |---|---|---|

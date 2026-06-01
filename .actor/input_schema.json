@@ -92,20 +92,6 @@
       "maximum": 100,
       "editor": "number"
     },
-    "skipWarmUp": {
-      "title": "Skip Maps warm-up",
-      "type": "boolean",
-      "description": "Skip the initial google.com/maps visit before navigating to the place. Enabled by default for direct URL, CID, and Place ID runs.",
-      "default": true,
-      "editor": "checkbox"
-    },
-    "apiOnly": {
-      "title": "API Only",
-      "type": "boolean",
-      "description": "Use only the /maps/preview/place API for place details. Disables DOM fallback if the API response cannot be parsed.",
-      "default": false,
-      "editor": "checkbox"
-    },
     "language": {
       "title": "Language (Optional)",
       "type": "string",
@@ -114,13 +100,6 @@
       "default": "en",
       "example": "es",
       "nullable": true
-    },
-    "headless": {
-      "title": "Headless Browser",
-      "type": "boolean",
-      "description": "Run Puppeteer in headless mode. Set to false locally for debugging.",
-      "default": true,
-      "editor": "checkbox"
     }
   },
   "required": []
