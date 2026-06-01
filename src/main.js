@@ -4,6 +4,7 @@ import StealthPlugin from 'puppeteer-extra-plugin-stealth';
 import { scrapeGoogleMapsPlace } from './scraper.js';
 import { buildPuppeteerLaunchOptions } from './browser.js';
 import { selectTargetResolutionStrategy } from './strategies/targetResolution.js';
+import { resolveMaxImages } from './placePanels.js';
 
 puppeteer.use(StealthPlugin());
 
@@ -56,10 +57,11 @@ const {
   blockAssets = true,
   language = 'en',
   includeImages = false,
-  maxImages = 10,
+  maxImages,
 } = input;
 
 const wantsImages = includeImages === true || includeImages === 'true';
+const imageLimit = resolveMaxImages(maxImages);
 
 // ── Proxy ─────────────────────────────────────────────────────────────────────
 const proxyConfiguration = await Actor.createProxyConfiguration(proxyInput);
@@ -167,7 +169,7 @@ try {
     searchQuery: resolvedTarget.searchQuery,
     skipHybridEnrich: !wantsImages,
     includeImages: wantsImages,
-    maxImages: Math.min(100, Math.max(1, Number(maxImages) || 10)),
+    maxImages: imageLimit,
   };
 
   let scrapeErr;

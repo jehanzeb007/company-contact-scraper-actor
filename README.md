@@ -13,7 +13,7 @@ Scrape any business profile from Google Maps — get contact details, address, r
 | 📍 Address | Full address + parsed street, city, state, ZIP, country |
 | ⭐ Ratings | Average score, total reviews, star-by-star breakdown |
 | 🕐 Hours | Opening hours for each day |
-| 📸 Photos | Image URLs (optional — enable `includeImages`; capped by `maxImages`) |
+| 📸 Photos | Image URLs (optional — enable `includeImages`; omit `maxImages` for all, or set a cap) |
 | 🌐 Web Results | Related web links from the Maps panel (with `includeImages`) |
 | ℹ️ About | Description and attribute sections when available (API or `includeImages`) |
 | 🔑 IDs | CID, Feature ID, Place ID, Knowledge Graph ID |
@@ -83,9 +83,8 @@ Paste the URL directly from your browser:
 
 The actor writes one object to the default dataset. Some fields can be `null` or empty arrays if Google Maps does not expose the data.
 
-<<<<<<< Updated upstream
-### Main Output Fields
-=======
+### Input fields
+
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `strategy` | string | `auto` | How to find the place: `auto`, `url`, `cid`, `placeId`, or `search` |
@@ -97,26 +96,8 @@ The actor writes one object to the default dataset. Some fields can be `null` or
 | `language` | string | `en` | Maps UI language (e.g. `en`, `es`, `fr`, `de`) |
 | `blockAssets` | boolean | `true` | Block images/fonts during scrape to save bandwidth |
 | `includeImages` | boolean | `false` | When `true`, collects photos, web results, and About from the Maps UI (slower). When `false`, details come from the preview API with DOM fallback only if needed |
-| `maxImages` | integer | `10` | Max photo URLs when `includeImages` is `true` (1–100) |
+| `maxImages` | integer | — | Optional cap when `includeImages` is `true`; omit to collect all photos found |
 | `proxyConfig` | object | Residential | Apify proxy config — residential proxies recommended |
->>>>>>> Stashed changes
-
-| Field | Type | Default | Description |
-|-------|------|---------|-------------|
-| `strategy` | string | `auto` | How to find the place: `auto`, `url`, `cid`, `placeId`, or `search` |
-| `url` | string | — | Google Maps place URL |
-| `cid` | string | — | Google Maps CID |
-| `placeId` | string | — | Google Place ID |
-| `searchQuery` | string | — | Business name to search |
-| `website` | string | — | Company website — helps verify the right result when searching |
-| `language` | string | `en` | Maps UI language (e.g. `en`, `es`, `fr`, `de`) |
-| `apiOnly` | boolean | `false` | Use Maps API only — leave `false` for the most complete data |
-| `blockAssets` | boolean | `true` | Block images/fonts during scrape to save bandwidth |
-| `includeImages` | boolean | `false` | When `true`, collects photos, web results, and About from the Maps UI (slower) |
-| `maxImages` | integer | `10` | Max photo URLs when `includeImages` is `true` (1–100) |
-| `skipWarmUp` | boolean | `true` | Skip the initial Maps homepage visit (URL/CID/Place ID). Set `false` if a run fails |
-| `proxyConfig` | object | Residential | Apify proxy config — residential proxies recommended |
-| `headless` | boolean | `true` | Puppeteer headless mode — keep `true` on Apify Cloud |
 
 ---
 

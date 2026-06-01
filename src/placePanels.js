@@ -248,7 +248,7 @@ export async function extractPhotosFromOverview(page) {
 export async function extractPhotosAndVideos(page, { maxScrolls = 15, maxPhotos = null } = {}) {
   const photoSet = new Set();
   const videoSet = new Set();
-  const photoLimit = maxPhotos != null ? Math.max(1, Number(maxPhotos) || 10) : null;
+  const photoLimit = resolveMaxImages(maxPhotos);
 
   const fromState = await extractPhotosFromAppState(page);
   for (const u of fromState) photoSet.add(u);
@@ -297,9 +297,21 @@ export async function extractPhotosAndVideos(page, { maxScrolls = 15, maxPhotos 
   return { imageUrls, videoUrls, images };
 }
 
+const GALLERY_SCROLLS_UNLIMITED = 50;
+
+/** Positive integer cap, or `null` when omitted/invalid (collect all photos found). */
+export function resolveMaxImages(value) {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'string' && value.trim() === '') return null;
+  const n = Number(value);
+  if (!Number.isFinite(n) || n < 1) return null;
+  return Math.floor(n);
+}
+
 export function galleryScrollsForImageLimit(maxImages) {
-  const n = Math.max(1, Number(maxImages) || 10);
-  return Math.min(15, Math.max(2, Math.ceil(n / 4)));
+  if (maxImages == null) return GALLERY_SCROLLS_UNLIMITED;
+  const n = Math.max(1, Number(maxImages));
+  return Math.min(GALLERY_SCROLLS_UNLIMITED, Math.max(2, Math.ceil(n / 4)));
 }
 
 export function clearPlaceImages(place) {
@@ -311,13 +323,14 @@ export function clearPlaceImages(place) {
   return place;
 }
 
-export function capPlaceImages(place, maxImages = 10) {
+export function capPlaceImages(place, maxImages = null) {
   if (!place) return place;
   const merged = filterGalleryImageUrls([
     place?.imageUrl,
     ...(Array.isArray(place?.imageUrls) ? place.imageUrls : []),
   ]);
-  const capped = merged.slice(0, Math.max(1, Number(maxImages) || 10));
+  const limit = resolveMaxImages(maxImages);
+  const capped = limit == null ? merged : merged.slice(0, limit);
   if (!capped.length) {
     clearPlaceImages(place);
     return place;
@@ -757,8 +770,10 @@ function mergeAboutIntoPlace(place, about) {
   return place;
 }
 
-export async function enrichPhotosAndAbout(page, place, { maxImages = 10 } = {}) {
-  console.log(`[panels] Exploring up to ${maxImages} images, web results, and about...`);
+export async function enrichPhotosAndAbout(page, place, { maxImages = null } = {}) {
+  const imageLimit = resolveMaxImages(maxImages);
+  const limitLabel = imageLimit == null ? 'all available' : String(imageLimit);
+  console.log(`[panels] Exploring ${limitLabel} images, web results, and about...`);
 
   await clickOverviewTab(page).catch(() => { });
   await sleep(800);
@@ -768,7 +783,7 @@ export async function enrichPhotosAndAbout(page, place, { maxImages = 10 } = {})
     imageUrls: await extractPhotosFromAppState(page),
     videoUrls: [],
   });
-  capPlaceImages(place, maxImages);
+  capPlaceImages(place, imageLimit);
 
   const webResults = await extractWebResults(page);
   mergeWebResultsIntoPlace(place, webResults);
@@ -789,13 +804,13 @@ export async function enrichPhotosAndAbout(page, place, { maxImages = 10 } = {})
     place?.imageUrl,
     ...(Array.isArray(place?.imageUrls) ? place.imageUrls : []),
   ]).length;
-  if (current < maxImages) {
+  if (imageLimit == null || current < imageLimit) {
     mergePhotosIntoPlace(place, await extractPhotosAndVideos(page, {
-      maxScrolls: galleryScrollsForImageLimit(maxImages),
-      maxPhotos: maxImages,
+      maxScrolls: galleryScrollsForImageLimit(imageLimit),
+      maxPhotos: imageLimit,
     }));
   }
-  capPlaceImages(place, maxImages);
+  capPlaceImages(place, imageLimit);
 
   await clickOverviewTab(page).catch(() => { });
   await sleep(300);

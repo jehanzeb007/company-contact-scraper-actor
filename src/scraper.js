@@ -1071,7 +1071,7 @@ function needsReviewEnrichment(place) {
 export async function enrichPlaceWithHybridData(page, place, {
   language = 'en',
   includeImages = false,
-  maxImages = 10,
+  maxImages = null,
 } = {}) {
   if (shouldSkipHybridDomEnrichment(place, { includeImages })) {
     console.log('[hybrid] API data sufficient — skipping DOM enrichment.');
@@ -1278,7 +1278,7 @@ export async function scrapeGoogleMapsPlace(page, {
   skipHybridEnrich = false,
   skipWarmUp = true,
   includeImages = false,
-  maxImages = 10,
+  maxImages = null,
 }) {
   if (!skipWarmUp) {
     await warmUpGoogleMaps(page, language);

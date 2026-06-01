@@ -84,12 +84,11 @@
       "editor": "checkbox"
     },
     "maxImages": {
-      "title": "Max photos",
+      "title": "Max photos (optional)",
       "type": "integer",
-      "description": "Maximum number of photo URLs to collect when includeImages is true. Fewer photos means less gallery scrolling.",
-      "default": 10,
+      "description": "When includeImages is true: leave empty to collect all photos found in the gallery; set a positive number to keep only that many URLs.",
       "minimum": 1,
-      "maximum": 100,
+      "nullable": true,
       "editor": "number"
     },
     "language": {
